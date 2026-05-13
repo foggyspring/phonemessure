@@ -37,7 +37,11 @@
     <!-- top bar -->
     <header class="topbar">
       <button id="btn-menu" class="icon-btn" aria-label="menu">≡</button>
-      <div class="topbar-title"><span class="dot"></span> phonemessure</div>
+      <div class="topbar-title">
+        <span id="conn-dot" class="dot"></span>
+        <span id="conn-label">phonemessure</span>
+        <span id="device-chip" class="chip" hidden></span>
+      </div>
       <button id="btn-flip" class="icon-btn" aria-label="flip camera">⇅</button>
     </header>
 
@@ -86,7 +90,19 @@
         </label>
         <div class="row">
           <span>Calibration sheet (PDF)</span>
-          <a id="lnk-pdf" class="btn primary small" href="/api/aruco-sheet.pdf" target="_blank">Download A4</a>
+          <a class="btn primary small" href="/api/aruco-sheet.pdf" target="_blank">Download A4</a>
+        </div>
+        <div class="row">
+          <span>Charuco board (PDF)</span>
+          <a class="btn primary small" href="/api/charuco-sheet.pdf" target="_blank">Download A4</a>
+        </div>
+        <div class="row">
+          <span>Inference device</span>
+          <code id="device-mono" class="mono">—</code>
+        </div>
+        <div class="row">
+          <span>Camera intrinsics</span>
+          <code id="intr-mono" class="mono">—</code>
         </div>
         <div class="row">
           <span>Session</span>
@@ -104,8 +120,10 @@
       </header>
       <div class="panel-body">
         <div class="tabs">
-          <button class="tab active" data-tab="ref">Reference object</button>
-          <button class="tab" data-tab="sheet">Calibration sheet</button>
+          <button class="tab active" data-tab="ref">Reference</button>
+          <button class="tab" data-tab="sheet">Sheet (ArUco)</button>
+          <button class="tab" data-tab="auto">Auto (YOLO)</button>
+          <button class="tab" data-tab="intrinsics">Intrinsics</button>
         </div>
         <div id="tab-ref" class="tab-body">
           <p class="hint">Pick a reference, point two taps at its known edge.</p>
@@ -127,11 +145,45 @@
           <button id="btn-cal-start" class="btn primary full">Begin tap-the-edge</button>
         </div>
         <div id="tab-sheet" class="tab-body" hidden>
-          <p class="hint">Print the A4 sheet (Settings → Download). Lay it flat
-          and fully in view. Tap <b>Detect</b> — the whole sheet plane is then
-          calibrated; even an angled shot is corrected by homography.</p>
+          <p class="hint">Print <a href="/api/aruco-sheet.pdf" target="_blank">the A4 sheet</a>
+          (DICT_4X4_50 corner markers). Lay it flat and in view. Tap
+          <b>Detect</b> — the laptop runs <code>cv2.aruco</code> on the frame
+          and the whole sheet plane is calibrated by homography, even at an
+          angle.</p>
           <button id="btn-detect" class="btn primary full">Detect markers</button>
           <p id="detect-status" class="status">—</p>
+        </div>
+
+        <div id="tab-auto" class="tab-body" hidden>
+          <p class="hint">YOLO-World finds known objects (credit card, A4, coin)
+          and reads off mm/pixel from their physical size. Quick fallback when
+          you don't have the sheet on hand. Accuracy is bbox-based, so keep
+          the object roughly perpendicular to the camera.</p>
+          <label class="row">
+            <span>Look for</span>
+            <input type="text" id="yolo-prompts"
+              value="credit card, a4 paper, us quarter, one yuan coin"
+              placeholder="comma separated">
+          </label>
+          <button id="btn-yolo" class="btn primary full">Detect references</button>
+          <p id="yolo-status" class="status">—</p>
+          <div id="yolo-list" class="hist-list"></div>
+        </div>
+
+        <div id="tab-intrinsics" class="tab-body" hidden>
+          <p class="hint">One-time per camera. Print
+          <a href="/api/charuco-sheet.pdf" target="_blank">the Charuco board</a>,
+          glue to cardstock, then capture 12-20 frames showing the whole board
+          from many angles (corners, tilts, distances). Lens distortion is
+          then removed from every later frame — the single biggest accuracy
+          win.</p>
+          <div class="row">
+            <button id="btn-intr-start" class="btn">Start</button>
+            <button id="btn-intr-capture" class="btn primary">Capture frame</button>
+            <button id="btn-intr-clear" class="btn warn">Clear</button>
+          </div>
+          <p id="intr-status" class="status">Not started.</p>
+          <button id="btn-intr-solve" class="btn primary full">Solve + save</button>
         </div>
       </div>
     </section>
@@ -171,6 +223,7 @@
 
   <script src="/static/measure.js"></script>
   <script src="/static/calibrate.js"></script>
+  <script src="/static/stream.js"></script>
   <script src="/static/history.js"></script>
   <script src="/static/app.js"></script>
   <script>

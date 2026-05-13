@@ -1,6 +1,18 @@
+# core web server
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
 cryptography==44.0.0
 qrcode==8.0
 pillow==11.0.0
 reportlab==4.2.5
+
+# inference stack
+# opencv-contrib has cv2.aruco + charuco; the regular opencv-python build
+# does NOT ship the contrib modules.
+opencv-contrib-python==4.10.0.84
+numpy>=1.26,<2.2
+
+# YOLO-World for auto reference detection. Brings torch as a dep — that's
+# also what we use for MPS device selection on Apple silicon.
+torch==2.5.1
+ultralytics==8.3.40

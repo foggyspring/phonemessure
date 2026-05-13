@@ -16,6 +16,12 @@ certs/
 *.key
 *.crt
 
+# Model checkpoints (large, fetched on demand)
+checkpoints/
+*.pt
+*.onnx
+*.pth
+
 # Local config / sessions
 sessions/
 .env

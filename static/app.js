@@ -3,6 +3,7 @@
   const PM = window.PM;
   const PM_CAL = window.PM_CAL;
   const PM_HIST = window.PM_HIST;
+  const S = window.PM_STREAM;
 
   const $ = (id) => document.getElementById(id);
 
@@ -16,29 +17,34 @@
   const readoutMode = $("readout-mode");
   const calStatus = $("cal-status");
   const detectStatus = $("detect-status");
+  const yoloStatus = $("yolo-status");
+  const yoloList = $("yolo-list");
+  const intrStatus = $("intr-status");
+  const intrMono = $("intr-mono");
+  const deviceMono = $("device-mono");
+  const deviceChip = $("device-chip");
+  const connDot = $("conn-dot");
+  const connLabel = $("conn-label");
   const histList = $("hist-list");
   const sessIdEl = $("sess-id");
 
   // ─── state ──────────────────────────────────────────────────────────
   const ui = {
-    facing: "environment",     // or "user"
+    facing: "environment",
     stream: null,
     showGrid: false,
     gridMM: 10,
     loupeOn: true,
-    // pending calibration: "scale" — waiting for two taps with mm value
-    calPending: null,
+    calPending: null,        // scale-from-taps in progress
+    intrCaptures: 0,
   };
 
   // ─── boot ───────────────────────────────────────────────────────────
   PM_HIST.load();
   loadLocalCalibration();
-  initSession();
+  initSession().then(loadInferenceStatus);
 
   $("boot-go").addEventListener("click", startCamera);
-  // also try immediately in case getUserMedia is permitted without gesture
-  // (it usually isn't on mobile — but no harm in trying)
-  // Don't auto-start; iOS demands a user gesture.
 
   async function initSession() {
     let sid = localStorage.getItem("pm.sessionId");
@@ -52,7 +58,31 @@
     }
     PM_HIST.sessionId = sid;
     if (sessIdEl) sessIdEl.textContent = sid;
+    // open the websocket; frames only start streaming when needed
+    S.connect(sid);
   }
+
+  async function loadInferenceStatus() {
+    try {
+      const r = await fetch("/api/inference/status");
+      const j = await r.json();
+      const dev = (j.device || "cpu").toUpperCase();
+      deviceMono.textContent = dev + (j.aruco.ok ? " · aruco OK" : " · aruco —") + (j.yolo.ok ? " · yolo OK" : " · yolo —");
+      deviceChip.textContent = dev;
+      deviceChip.classList.remove("mps", "cpu");
+      deviceChip.classList.add(dev === "MPS" ? "mps" : "cpu");
+      deviceChip.hidden = false;
+    } catch {}
+  }
+
+  S.on("open", () => {
+    connDot.classList.remove("off");
+    connLabel.textContent = "phonemessure";
+  });
+  S.on("close", () => {
+    connDot.classList.add("off");
+    connLabel.textContent = "reconnecting…";
+  });
 
   function loadLocalCalibration() {
     try {
@@ -100,6 +130,8 @@
       $("boot").hidden = true;
       $("app").hidden = false;
       sizeCanvases();
+      // start the upstream frame loop; server only ever holds the latest frame
+      S.startStream(video, overlay);
     } catch (e) {
       err.textContent = (e && e.message) || String(e);
       err.hidden = false;
@@ -114,13 +146,6 @@
       c.height = Math.round(h * dpr);
       c.style.width = w + "px";
       c.style.height = h + "px";
-      c.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
-      c.width = Math.round(w * dpr);
-      c.height = Math.round(h * dpr);
-    }
-    // Note: setTransform above was wrong because resetting width clears it.
-    // Re-apply.
-    for (const c of [overlay, gridcv]) {
       c.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     redraw();
@@ -140,8 +165,7 @@
     return { x: t.clientX - rect.left, y: t.clientY - rect.top };
   }
 
-  let dragging = false;
-  let calTapBuf = []; // for tap-the-edge
+  let calTapBuf = [];
 
   overlay.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
@@ -149,7 +173,6 @@
     const p = ptFrom(ev);
 
     if (ui.calPending) {
-      // tap-the-edge: gather two taps
       calTapBuf.push(p);
       drawCalTaps();
       showLoupe(p, true);
@@ -174,23 +197,17 @@
       return;
     }
 
-    // Try to grab an existing endpoint to drag
     const hit = PM.hitTest(p);
     if (hit) {
       PM.state.drag = hit;
-      dragging = true;
       if (ui.loupeOn) showLoupe(p, false);
       return;
     }
 
     if (!PM.state.current) {
       PM.state.current = PM.startShape(PM.state.mode, p);
-      // For line/rect/circle (2-pt drag mode), start the drag on the 2nd point
       if (PM.state.mode === "line" || PM.state.mode === "rect") {
         PM.state.drag = { shapeIdx: -1, ptIdx: 1 };
-        dragging = true;
-      } else if (PM.state.mode === "circle") {
-        // first tap added; next pointerdowns add additional points
       }
     } else {
       PM.continueShape(PM.state.current, p);
@@ -212,11 +229,9 @@
     }
   });
 
-  function endPointer(ev) {
+  function endPointer() {
     if (PM.state.drag) {
       PM.state.drag = null;
-      dragging = false;
-      // For "line"/"rect" auto-commit on release
       const c = PM.state.current;
       if (c && (c.mode === "line" || c.mode === "rect")) {
         PM.state.shapes.push(c);
@@ -236,7 +251,6 @@
     loupe.width = size; loupe.height = size;
     loupe.style.width = size + "px"; loupe.style.height = size + "px";
     loupe.style.left = Math.max(8, Math.min(window.innerWidth - size - 8, p.x - size / 2)) + "px";
-    // push above the touch so the finger doesn't cover it
     const topY = p.y - size - 60;
     loupe.style.top = (topY > 60 ? topY : p.y + 40) + "px";
     loupe.classList.toggle("cal", !!isCal);
@@ -244,8 +258,6 @@
 
     const ctx = loupe.getContext("2d");
     ctx.clearRect(0, 0, size, size);
-
-    // sample from video, mapped through the same "cover" transform
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh) return;
     const ow = overlay.clientWidth, oh = overlay.clientHeight;
@@ -256,13 +268,11 @@
     const u = p.x / ow, v = p.y / oh;
     const cx = sx0 + u * swh, cy = sy0 + v * shv;
     const half = (size / zoom) / 2 * (swh / ow);
-
     ctx.save();
     ctx.beginPath();
     ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
     ctx.clip();
     ctx.drawImage(video, cx - half, cy - half, half * 2, half * 2, 0, 0, size, size);
-    // crosshair
     ctx.strokeStyle = isCal ? "#f59e0b" : "#22d3ee";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -279,36 +289,27 @@
     const w = gridcv.clientWidth, h = gridcv.clientHeight;
     ctx.clearRect(0, 0, gridcv.width, gridcv.height);
     if (!ui.showGrid || !PM.state.calibration) return;
-
     const cal = PM.state.calibration;
     ctx.strokeStyle = "rgba(34, 211, 238, 0.45)";
     ctx.lineWidth = 0.5;
 
     if (cal.kind === "scale") {
       const pitch = ui.gridMM / cal.mmPerPx;
-      for (let x = 0; x < w; x += pitch) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      for (let y = 0; y < h; y += pitch) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
+      for (let x = 0; x < w; x += pitch) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+      for (let y = 0; y < h; y += pitch) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
       return;
     }
-
-    // homography: invert by sampling. Cheaper alternative: draw lines along
-    // the world grid, then map via inverse homography.
     const H = cal.H;
     const Hinv = invert3x3(H);
     if (!Hinv) return;
+    const padX = 80, padY = 80;
     const minX = 0, maxX = PM_CAL.SHEET.W_MM;
     const minY = 0, maxY = PM_CAL.SHEET.H_MM;
-    // a touch beyond the sheet
-    const padX = 80, padY = 80;
     const project = (X, Y) => {
-      const w0 = Hinv[6] * X + Hinv[7] * Y + Hinv[8];
+      const w0 = Hinv[6]*X + Hinv[7]*Y + Hinv[8];
       return {
-        x: (Hinv[0] * X + Hinv[1] * Y + Hinv[2]) / w0,
-        y: (Hinv[3] * X + Hinv[4] * Y + Hinv[5]) / w0,
+        x: (Hinv[0]*X + Hinv[1]*Y + Hinv[2]) / w0,
+        y: (Hinv[3]*X + Hinv[4]*Y + Hinv[5]) / w0,
       };
     };
     for (let X = minX - padX; X <= maxX + padX; X += ui.gridMM) {
@@ -322,25 +323,17 @@
   }
 
   function invert3x3(m) {
-    const a = m[0], b = m[1], c = m[2],
-          d = m[3], e = m[4], f = m[5],
-          g = m[6], h = m[7], i = m[8];
-    const A =  (e * i - f * h);
-    const B = -(d * i - f * g);
-    const C =  (d * h - e * g);
-    const D = -(b * i - c * h);
-    const E =  (a * i - c * g);
-    const F = -(a * h - b * g);
-    const G =  (b * f - c * e);
-    const HH = -(a * f - c * d);
-    const I =  (a * e - b * d);
-    const det = a * A + b * B + c * C;
+    const a=m[0],b=m[1],c=m[2],d=m[3],e=m[4],f=m[5],g=m[6],h=m[7],i=m[8];
+    const A=(e*i-f*h), B=-(d*i-f*g), Cm=(d*h-e*g);
+    const D=-(b*i-c*h), E=(a*i-c*g), F=-(a*h-b*g);
+    const G=(b*f-c*e), HH=-(a*f-c*d), I=(a*e-b*d);
+    const det = a*A + b*B + c*Cm;
     if (Math.abs(det) < 1e-9) return null;
-    const k = 1 / det;
-    return [A * k, D * k, G * k, B * k, E * k, HH * k, C * k, F * k, I * k];
+    const k = 1/det;
+    return [A*k, D*k, G*k, B*k, E*k, HH*k, Cm*k, F*k, I*k];
   }
 
-  // ─── calibration tap visualization while pending ────────────────────
+  // ─── tap-cal helpers ────────────────────────────────────────────────
   function drawCalTaps() {
     const ctx = overlay.getContext("2d");
     redraw();
@@ -353,24 +346,11 @@
       ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
       ctx.fill(); ctx.stroke();
     }
-    if (calTapBuf.length === 1) {
-      ctx.strokeStyle = "#f59e0b";
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(calTapBuf[0].x, calTapBuf[0].y);
-      ctx.lineTo(calTapBuf[0].x + 1, calTapBuf[0].y + 1);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
     ctx.restore();
   }
 
-  // ─── redraw + readout ───────────────────────────────────────────────
-  function redraw() {
-    const ctx = overlay.getContext("2d");
-    PM.drawAll(ctx);
-    refreshReadout();
-  }
+  function redraw() { PM.drawAll(overlay.getContext("2d")); refreshReadout(); }
+
   function refreshReadout() {
     const cal = PM.state.calibration;
     if (!cal) {
@@ -380,7 +360,11 @@
       return;
     }
     readout.classList.remove("calibrating");
-    readoutMode.textContent = cal.kind === "homography" ? "HOMOGRAPHY" : "SCALE";
+    if (cal.kind === "homography") {
+      readoutMode.textContent = cal.undistorted ? "HOMOGRAPHY · UNDIST" : "HOMOGRAPHY";
+    } else {
+      readoutMode.textContent = `SCALE · ${cal.refName || "ref"}`;
+    }
     const s = PM.state.current || PM.state.shapes[PM.state.shapes.length - 1];
     if (!s) { readoutVal.textContent = "—"; return; }
     const r = PM.computeShape(s);
@@ -393,7 +377,6 @@
       document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       PM.state.mode = btn.dataset.mode;
-      // commit any in-progress shape
       if (PM.state.current) {
         const fin = PM.finishShape(PM.state.current);
         if (fin) PM.state.shapes.push(fin);
@@ -406,8 +389,8 @@
   $("btn-undo").addEventListener("click", () => { PM.undo(); redraw(); });
   $("btn-clear").addEventListener("click", () => { PM.clear(); redraw(); });
 
+  let pendingSave = null;
   $("btn-save").addEventListener("click", () => {
-    // commit current shape if any
     if (PM.state.current) {
       const fin = PM.finishShape(PM.state.current);
       if (fin) PM.state.shapes.push(fin);
@@ -420,8 +403,6 @@
     $("save-note").value = "";
     $("save-modal").hidden = false;
   });
-
-  let pendingSave = null;
   $("save-cancel").addEventListener("click", () => { $("save-modal").hidden = true; pendingSave = null; });
   $("save-ok").addEventListener("click", () => {
     if (!pendingSave) return;
@@ -443,6 +424,7 @@
     closeAllPanels();
     $(id).hidden = false;
     if (id === "panel-hist") PM_HIST.renderInto(histList);
+    if (id === "panel-cal") refreshIntrinsicsStatus();
   }
   function closeAllPanels() {
     for (const id of ["panel-menu", "panel-cal", "panel-hist"]) $(id).hidden = true;
@@ -464,11 +446,11 @@
     document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
     t.classList.add("active");
     const which = t.dataset.tab;
-    $("tab-ref").hidden = which !== "ref";
-    $("tab-sheet").hidden = which !== "sheet";
+    for (const id of ["tab-ref", "tab-sheet", "tab-auto", "tab-intrinsics"]) $(id).hidden = true;
+    $("tab-" + which).hidden = false;
   }));
 
-  // presets
+  // tap-the-edge presets
   let pendingMM = null;
   document.querySelectorAll(".preset").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll(".preset").forEach(x => x.classList.remove("active"));
@@ -503,25 +485,135 @@
     readoutVal.textContent = `${pendingMM} mm`;
   });
 
-  // sheet detection
-  $("btn-detect").addEventListener("click", () => {
-    detectStatus.textContent = "Scanning frame…";
+  // sheet detect via server (cv2.aruco)
+  $("btn-detect").addEventListener("click", async () => {
+    detectStatus.textContent = "Scanning frame on MacBook…";
     detectStatus.className = "status";
-    setTimeout(() => {
-      const res = PM_CAL.detectSheet(video, overlay);
-      if (!res.ok) {
-        detectStatus.textContent = `Couldn't detect: ${res.reason}. Make sure all 4 black squares are fully visible on a bright background.`;
+    try {
+      const msg = await S.oneShot(video, overlay, "detect_aruco", {}, "aruco");
+      if (!msg.ok) {
+        detectStatus.textContent = `Failed: ${msg.reason}`;
         detectStatus.className = "status err";
         return;
       }
-      PM.state.calibration = res.calibration;
+      const cal = PM_CAL.calibrationFromAruco(msg, overlay.clientWidth);
+      if (!cal) {
+        detectStatus.textContent = "Detected but couldn't build calibration.";
+        detectStatus.className = "status err";
+        return;
+      }
+      PM.state.calibration = cal;
       persistCalibration();
-      detectStatus.textContent = "Homography solved — whole sheet plane is now calibrated.";
+      const u = msg.undistorted ? " (undistorted frame)" : "";
+      detectStatus.textContent = `Homography solved from 4 markers${u}.`;
       detectStatus.className = "status ok";
       redrawGrid();
       redraw();
-    }, 30);
+    } catch (e) {
+      detectStatus.textContent = `Timeout or error: ${e.message || e}`;
+      detectStatus.className = "status err";
+    }
   });
+
+  // YOLO auto-reference
+  $("btn-yolo").addEventListener("click", async () => {
+    yoloStatus.textContent = "Running YOLO-World on MacBook…";
+    yoloStatus.className = "status";
+    yoloList.innerHTML = "";
+    const prompts = ($("yolo-prompts").value || "")
+      .split(",").map(s => s.trim()).filter(Boolean);
+    try {
+      const msg = await S.oneShot(video, overlay, "detect_yolo", { prompts }, "yolo", 30000);
+      if (!msg.ok) {
+        yoloStatus.textContent = `Failed: ${msg.reason}`;
+        yoloStatus.className = "status err";
+        return;
+      }
+      const dets = msg.detections || [];
+      if (!dets.length) {
+        yoloStatus.textContent = "No matching object in frame.";
+        yoloStatus.className = "status err";
+        return;
+      }
+      yoloStatus.textContent = `${dets.length} detection${dets.length>1?"s":""} — pick one to set scale.`;
+      yoloStatus.className = "status ok";
+      for (const d of dets) {
+        const row = document.createElement("div");
+        row.className = "hist-item";
+        const left = document.createElement("div");
+        const sc = d.mm_per_px ? `${(1/d.mm_per_px).toFixed(2)} px/mm` : "size unknown";
+        left.innerHTML = `
+          <div class="h-name">${escapeHTML(d.label)} <span class="h-note">${(d.score*100).toFixed(0)}%</span></div>
+          <div class="h-val">${escapeHTML(sc)}</div>`;
+        const apply = document.createElement("button");
+        apply.className = "btn small primary";
+        apply.textContent = d.mm_per_px ? "Apply" : "—";
+        apply.disabled = !d.mm_per_px;
+        apply.onclick = () => {
+          const cal = PM_CAL.calibrationFromYolo(d, msg, overlay.clientWidth);
+          if (!cal) return;
+          PM.state.calibration = cal;
+          persistCalibration();
+          yoloStatus.textContent = `Applied: ${d.label} → ${(1/cal.mmPerPx).toFixed(2)} px/mm`;
+          redrawGrid(); redraw();
+        };
+        row.append(left, apply);
+        yoloList.appendChild(row);
+      }
+    } catch (e) {
+      yoloStatus.textContent = `Timeout or error: ${e.message || e}`;
+      yoloStatus.className = "status err";
+    }
+  });
+
+  // intrinsics flow
+  $("btn-intr-start").addEventListener("click", async () => {
+    intrStatus.textContent = "Starting…";
+    const msg = await S.oneShot(video, overlay, "calib_start", {}, "calib");
+    if (!msg.ok) { intrStatus.textContent = `Failed: ${msg.reason}`; intrStatus.className = "status err"; return; }
+    ui.intrCaptures = 0;
+    intrStatus.textContent = "Started. Aim board → Capture frame (×12-20).";
+    intrStatus.className = "status";
+  });
+  $("btn-intr-capture").addEventListener("click", async () => {
+    const msg = await S.oneShot(video, overlay, "calib_capture", {}, "calib");
+    if (!msg.ok) {
+      intrStatus.textContent = `Skipped: ${msg.reason || "not enough corners"}`;
+      intrStatus.className = "status err";
+      return;
+    }
+    ui.intrCaptures = msg.captures || (ui.intrCaptures + 1);
+    intrStatus.textContent = `Captures: ${ui.intrCaptures} (board corners: ${msg.n})`;
+    intrStatus.className = "status ok";
+  });
+  $("btn-intr-clear").addEventListener("click", async () => {
+    await S.oneShot(video, overlay, "calib_clear", {}, "calib");
+    ui.intrCaptures = 0;
+    intrStatus.textContent = "Cleared.";
+    intrStatus.className = "status";
+  });
+  $("btn-intr-solve").addEventListener("click", async () => {
+    intrStatus.textContent = "Solving…";
+    intrStatus.className = "status";
+    const msg = await S.oneShot(video, overlay, "calib_solve", {}, "calib", 30000);
+    if (!msg.ok) { intrStatus.textContent = `Failed: ${msg.reason}`; intrStatus.className = "status err"; return; }
+    intrStatus.textContent = `Saved. RMS=${msg.rms.toFixed(2)} px @ ${msg.image_size[0]}×${msg.image_size[1]}`;
+    intrStatus.className = "status ok";
+    refreshIntrinsicsStatus();
+  });
+
+  async function refreshIntrinsicsStatus() {
+    try {
+      const msg = await S.oneShot(video, overlay, "intrinsics_status", {}, "intrinsics", 4000);
+      if (msg.have_intrinsics) {
+        intrMono.textContent = `${msg.image_size[0]}×${msg.image_size[1]} · rms=${(msg.rms||0).toFixed(2)}`;
+      } else {
+        intrMono.textContent = "not calibrated";
+      }
+    } catch {
+      intrMono.textContent = "—";
+    }
+  }
 
   // history exports
   $("btn-export-csv").addEventListener("click", () => {
@@ -544,12 +636,16 @@
     }
   });
 
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, m => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[m]));
+  }
   function stamp() {
     const d = new Date();
     const p = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   }
 
-  // first paint
   refreshReadout();
 })();

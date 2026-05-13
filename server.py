@@ -96,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-cert", action="store_true", help="serve plain HTTP (camera will only work on localhost)")
     p.add_argument("--cert", type=Path, help="path to a real TLS cert (PEM); pairs with --key")
     p.add_argument("--key", type=Path, help="path to a real TLS private key (PEM)")
+    p.add_argument("--warmup", action="store_true",
+                   help="pre-load YOLO-World before serving (first request gets ~3s back)")
     args = p.parse_args(argv)
 
     if (args.cert is None) != (args.key is None):
@@ -131,6 +133,19 @@ def main(argv: list[str] | None = None) -> int:
     primary_url = f"{scheme}://{primary}:{args.port}/"
     extras = [f"{scheme}://{ip}:{args.port}/" for ip in ips if ip != primary]
     _banner(primary_url, extras)
+
+    if args.warmup:
+        try:
+            from app.inference import yolo as yolo_mod
+            from app.inference.runtime import select_device
+            print(f"  warmup: device={select_device()}, loading YOLO-World…", flush=True)
+            err = yolo_mod.warmup()
+            if err:
+                print(f"  warmup: skipped — {err}")
+            else:
+                print("  warmup: ok")
+        except Exception as e:
+            print(f"  warmup: skipped — {e}")
 
     uvicorn.run(
         app,

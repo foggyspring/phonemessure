@@ -1,11 +1,12 @@
 /* phonemessure service worker — minimal app-shell cache for offline reload. */
-const VERSION = "pm-v1";
+const VERSION = "pm-v2";
 const SHELL = [
   "/",
   "/static/style.css",
   "/static/app.js",
   "/static/measure.js",
   "/static/calibrate.js",
+  "/static/stream.js",
   "/static/history.js",
   "/static/manifest.webmanifest",
   "/static/icons/icon.svg",

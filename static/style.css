@@ -148,7 +148,23 @@ input, textarea {
   border-radius: 50%;
   background: var(--good);
   box-shadow: 0 0 8px var(--good);
+  transition: background-color 200ms, box-shadow 200ms;
 }
+.dot.off { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+
+.chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-dim);
+  margin-left: 6px;
+}
+.chip.mps { color: var(--amber); border-color: var(--amber); }
+.chip.cpu { color: var(--ink-dim); }
 
 .icon-btn {
   width: 40px; height: 40px;
@@ -370,6 +386,9 @@ input, textarea {
   cursor: pointer;
 }
 .tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+.tabs { overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { flex: 0 0 auto; padding: 10px 14px; white-space: nowrap; }
 .tab-body { display: flex; flex-direction: column; gap: 12px; }
 
 .presets {
