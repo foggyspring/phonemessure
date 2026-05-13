@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0b0f14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="phonemessure" />
+  <title>phonemessure</title>
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg" />
+  <link rel="apple-touch-icon" href="/static/icons/icon.svg" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="boot">
+    <div class="boot-card">
+      <div class="boot-title">phonemessure</div>
+      <div class="boot-sub">tap to enable camera</div>
+      <button id="boot-go" class="btn primary">Start camera</button>
+      <div id="boot-err" class="boot-err" hidden></div>
+    </div>
+  </div>
+
+  <main id="app" hidden>
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <canvas id="gridcv"></canvas>
+
+    <!-- floating readout -->
+    <div id="readout" class="readout">
+      <span id="readout-val" class="readout-val">—</span>
+      <span id="readout-mode" class="readout-mode">no calib</span>
+    </div>
+
+    <!-- top bar -->
+    <header class="topbar">
+      <button id="btn-menu" class="icon-btn" aria-label="menu">≡</button>
+      <div class="topbar-title"><span class="dot"></span> phonemessure</div>
+      <button id="btn-flip" class="icon-btn" aria-label="flip camera">⇅</button>
+    </header>
+
+    <!-- magnifier -->
+    <canvas id="loupe" class="loupe" hidden></canvas>
+
+    <!-- bottom control deck -->
+    <footer class="dock">
+      <div class="mode-row" id="mode-row">
+        <button class="mode-btn active" data-mode="line">‖ Line</button>
+        <button class="mode-btn" data-mode="poly">⌇ Polyline</button>
+        <button class="mode-btn" data-mode="polygon">▰ Polygon</button>
+        <button class="mode-btn" data-mode="rect">▭ Rect</button>
+        <button class="mode-btn" data-mode="circle">◯ Circle</button>
+      </div>
+      <div class="act-row">
+        <button id="btn-cal" class="btn cal">Calibrate</button>
+        <button id="btn-undo" class="btn">Undo</button>
+        <button id="btn-clear" class="btn warn">Clear</button>
+        <button id="btn-save" class="btn primary">Save ✓</button>
+      </div>
+    </footer>
+
+    <!-- panel: menu -->
+    <section id="panel-menu" class="panel" hidden>
+      <header class="panel-head">
+        <h2>Settings</h2>
+        <button class="icon-btn" data-close>✕</button>
+      </header>
+      <div class="panel-body">
+        <label class="row">
+          <span>Grid overlay</span>
+          <input type="checkbox" id="opt-grid" />
+        </label>
+        <label class="row">
+          <span>Grid pitch (mm)</span>
+          <input type="number" id="opt-grid-mm" min="1" max="100" step="1" value="10" />
+        </label>
+        <label class="row">
+          <span>Magnifier on touch</span>
+          <input type="checkbox" id="opt-loupe" checked />
+        </label>
+        <label class="row">
+          <span>Decimals</span>
+          <input type="number" id="opt-decimals" min="0" max="3" step="1" value="1" />
+        </label>
+        <div class="row">
+          <span>Calibration sheet (PDF)</span>
+          <a id="lnk-pdf" class="btn primary small" href="/api/aruco-sheet.pdf" target="_blank">Download A4</a>
+        </div>
+        <div class="row">
+          <span>Session</span>
+          <code id="sess-id" class="mono"></code>
+        </div>
+        <button id="btn-history" class="btn full">History &amp; export →</button>
+      </div>
+    </section>
+
+    <!-- panel: calibration -->
+    <section id="panel-cal" class="panel" hidden>
+      <header class="panel-head">
+        <h2>Calibration</h2>
+        <button class="icon-btn" data-close>✕</button>
+      </header>
+      <div class="panel-body">
+        <div class="tabs">
+          <button class="tab active" data-tab="ref">Reference object</button>
+          <button class="tab" data-tab="sheet">Calibration sheet</button>
+        </div>
+        <div id="tab-ref" class="tab-body">
+          <p class="hint">Pick a reference, point two taps at its known edge.</p>
+          <div class="presets">
+            <button class="preset" data-mm="85.6">Credit card · 85.6 mm</button>
+            <button class="preset" data-mm="53.98">Credit card · 53.98 mm</button>
+            <button class="preset" data-mm="297">A4 long · 297 mm</button>
+            <button class="preset" data-mm="210">A4 short · 210 mm</button>
+            <button class="preset" data-mm="25">¥1 coin · 25 mm</button>
+            <button class="preset" data-mm="19">¥0.1 coin · 19 mm</button>
+            <button class="preset" data-mm="20.5">¥0.5 coin · 20.5 mm</button>
+          </div>
+          <label class="row">
+            <span>Custom (mm)</span>
+            <input type="number" id="custom-mm" min="1" step="0.1" placeholder="e.g. 50" />
+            <button id="btn-custom" class="btn small">Use</button>
+          </label>
+          <p id="cal-status" class="status">No calibration.</p>
+          <button id="btn-cal-start" class="btn primary full">Begin tap-the-edge</button>
+        </div>
+        <div id="tab-sheet" class="tab-body" hidden>
+          <p class="hint">Print the A4 sheet (Settings → Download). Lay it flat
+          and fully in view. Tap <b>Detect</b> — the whole sheet plane is then
+          calibrated; even an angled shot is corrected by homography.</p>
+          <button id="btn-detect" class="btn primary full">Detect markers</button>
+          <p id="detect-status" class="status">—</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- panel: history -->
+    <section id="panel-hist" class="panel" hidden>
+      <header class="panel-head">
+        <h2>History</h2>
+        <button class="icon-btn" data-close>✕</button>
+      </header>
+      <div class="panel-body">
+        <div id="hist-list" class="hist-list">
+          <p class="hint">No measurements yet.</p>
+        </div>
+        <div class="row">
+          <button id="btn-export-csv" class="btn">Export CSV</button>
+          <button id="btn-export-json" class="btn">Export JSON</button>
+          <button id="btn-export-png" class="btn primary">Snapshot PNG</button>
+        </div>
+        <button id="btn-hist-clear" class="btn warn full">Clear history</button>
+      </div>
+    </section>
+
+    <!-- name/note modal for save -->
+    <div id="save-modal" class="modal" hidden>
+      <div class="modal-card">
+        <h3>Save measurement</h3>
+        <label>Name <input id="save-name" type="text" maxlength="40" /></label>
+        <label>Note <textarea id="save-note" rows="2" maxlength="200"></textarea></label>
+        <div class="modal-row">
+          <button id="save-cancel" class="btn">Cancel</button>
+          <button id="save-ok" class="btn primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/measure.js"></script>
+  <script src="/static/calibrate.js"></script>
+  <script src="/static/history.js"></script>
+  <script src="/static/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>

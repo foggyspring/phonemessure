@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0b0f14"/>
+  <rect x="64" y="64" width="384" height="384" rx="64" fill="none" stroke="#22d3ee" stroke-width="6" opacity="0.25"/>
+  <!-- caliper jaws -->
+  <g fill="none" stroke="#22d3ee" stroke-width="14" stroke-linecap="round">
+    <path d="M 120 380 L 120 240 L 200 240"/>
+    <path d="M 392 132 L 392 272 L 312 272"/>
+  </g>
+  <!-- scale bar -->
+  <rect x="120" y="248" width="272" height="20" fill="#161c25" stroke="#22d3ee" stroke-width="3"/>
+  <g stroke="#22d3ee" stroke-width="2">
+    <line x1="156" y1="248" x2="156" y2="268"/>
+    <line x1="192" y1="248" x2="192" y2="268"/>
+    <line x1="228" y1="248" x2="228" y2="268"/>
+    <line x1="264" y1="248" x2="264" y2="268"/>
+    <line x1="300" y1="248" x2="300" y2="268"/>
+    <line x1="336" y1="248" x2="336" y2="268"/>
+  </g>
+  <!-- amber accent dot -->
+  <circle cx="256" cy="258" r="10" fill="#f59e0b"/>
+  <text x="256" y="430" font-family="ui-monospace, Menlo, monospace" font-size="48" font-weight="700"
+        fill="#22d3ee" text-anchor="middle" letter-spacing="6">MM</text>
+</svg>
