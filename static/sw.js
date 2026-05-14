@@ -1,5 +1,5 @@
 /* phonemessure service worker — minimal app-shell cache for offline reload. */
-const VERSION = "pm-v2";
+const VERSION = "pm-v3";
 const SHELL = [
   "/",
   "/static/style.css",

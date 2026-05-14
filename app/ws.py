@@ -4,10 +4,13 @@ Protocol (single endpoint at /ws/{sid}):
 
   Client → server
     • binary frames  ........ raw JPEG bytes; the most recent one is kept
-                              as `latest_frame` for that session.
+                              as `latest_frame` for that session, plus a
+                              ring buffer of size FRAME_BUFFER_LEN for
+                              multi-frame ArUco averaging.
     • text JSON commands:
         {"cmd": "detect_aruco"}
         {"cmd": "detect_yolo", "prompts": ["credit card", "a4 paper"]}
+        {"cmd": "refine_point", "x": 123.4, "y": 56.7, "radius": 20}
         {"cmd": "calib_start"}     – begin charuco intrinsics collection
         {"cmd": "calib_capture"}   – add current frame as a sample
         {"cmd": "calib_clear"}     – throw away current samples
@@ -61,6 +64,11 @@ async def ws(sock: WebSocket, sid: str) -> None:
         if cmd == "detect_yolo":
             prompts = payload.get("prompts")
             return await loop.run_in_executor(None, lambda: pipe.detect_yolo(prompts))
+        if cmd == "refine_point":
+            x = float(payload.get("x", 0))
+            y = float(payload.get("y", 0))
+            r = int(payload.get("radius", 20))
+            return await loop.run_in_executor(None, lambda: pipe.refine_point(x, y, r))
         if cmd == "calib_start":
             return await loop.run_in_executor(None, pipe.calib_start)
         if cmd == "calib_capture":
@@ -109,6 +117,7 @@ async def ws(sock: WebSocket, sid: str) -> None:
                 evt = {
                     "detect_aruco":      "aruco",
                     "detect_yolo":       "yolo",
+                    "refine_point":      "refine",
                     "calib_start":       "calib",
                     "calib_capture":     "calib",
                     "calib_clear":       "calib",

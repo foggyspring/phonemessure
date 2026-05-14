@@ -35,8 +35,14 @@
     showGrid: false,
     gridMM: 10,
     loupeOn: true,
+    refineOn: true,
     calPending: null,        // scale-from-taps in progress
     intrCaptures: 0,
+    lastAruco: null,         // last successful aruco event (with src corners)
+    lastArucoAt: 0,
+    lastSharpness: 0,
+    refineSeq: 0,            // monotonically-bumped to invalidate stale snap responses
+    refineFlashes: [],       // [{x, y, until}] for the brief amber flash on snap
   };
 
   // ─── boot ───────────────────────────────────────────────────────────
@@ -208,12 +214,21 @@
       PM.state.current = PM.startShape(PM.state.mode, p);
       if (PM.state.mode === "line" || PM.state.mode === "rect") {
         PM.state.drag = { shapeIdx: -1, ptIdx: 1 };
+      } else {
+        // single-tap placement (poly start, polygon start, circle 1st pt) —
+        // snap immediately
+        refinePoint(PM.state.current, 0);
       }
     } else {
       PM.continueShape(PM.state.current, p);
+      const newIdx = PM.state.current.pts.length - 1;
       if (PM.state.mode === "circle" && PM.state.current.pts.length === 3) {
-        PM.state.shapes.push(PM.finishShape(PM.state.current));
+        const fin = PM.finishShape(PM.state.current);
+        PM.state.shapes.push(fin);
         PM.state.current = null;
+        refinePoint(fin, newIdx);
+      } else {
+        refinePoint(PM.state.current, newIdx);
       }
     }
     if (ui.loupeOn) showLoupe(p, false);
@@ -231,12 +246,23 @@
 
   function endPointer() {
     if (PM.state.drag) {
+      const dropped = PM.state.drag;
       PM.state.drag = null;
       const c = PM.state.current;
+      let releasedShape, releasedIdx;
       if (c && (c.mode === "line" || c.mode === "rect")) {
         PM.state.shapes.push(c);
         PM.state.current = null;
+        releasedShape = PM.state.shapes[PM.state.shapes.length - 1];
+        releasedIdx = dropped.ptIdx;
+      } else if (dropped.shapeIdx === -1 && c) {
+        releasedShape = c;
+        releasedIdx = dropped.ptIdx;
+      } else if (dropped.shapeIdx >= 0) {
+        releasedShape = PM.state.shapes[dropped.shapeIdx];
+        releasedIdx = dropped.ptIdx;
       }
+      if (releasedShape) refinePoint(releasedShape, releasedIdx);
     }
     hideLoupe();
     redraw();
@@ -349,14 +375,106 @@
     ctx.restore();
   }
 
-  function redraw() { PM.drawAll(overlay.getContext("2d")); refreshReadout(); }
+  function redraw() {
+    const ctx = overlay.getContext("2d");
+    PM.drawAll(ctx);
+    drawArucoOverlay(ctx);
+    drawRefineFlashes(ctx);
+    refreshReadout();
+  }
+
+  /** Draw the detected sheet markers and the connecting quad, fading
+   *  out over the first 4 s after a detection so it doesn't compete
+   *  with the live measurement work. */
+  function drawArucoOverlay(ctx) {
+    const pose = ui.lastAruco;
+    if (!pose) return;
+    const age = (Date.now() - ui.lastArucoAt) / 1000;
+    if (age > 4) return;
+    const alpha = age < 2 ? 1 : Math.max(0, 1 - (age - 2) / 2);
+
+    const [workW] = pose.image_size;
+    const s = overlay.clientWidth / workW;     // work-px -> overlay-px
+    const C = pose.marker_centres;
+    const order = ["TL", "TR", "BR", "BL"];
+    const pts = order.map(k => C[k]).filter(Boolean).map(p => ({ x: p[0]*s, y: p[1]*s }));
+    if (pts.length !== 4) return;
+
+    ctx.save();
+    ctx.globalAlpha = 0.85 * alpha;
+    ctx.strokeStyle = "#f59e0b";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // small filled squares at each corner with the per-marker σ
+    const stds = pose.corner_std_px || {};
+    ctx.fillStyle = "#f59e0b";
+    ctx.font = "11px ui-monospace, SF Mono, Menlo, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    for (let i = 0; i < 4; i++) {
+      const p = pts[i];
+      ctx.fillRect(p.x - 5, p.y - 5, 10, 10);
+      const sigma = stds[order[i]];
+      if (sigma != null) {
+        ctx.fillText(`σ${sigma.toFixed(2)}`, p.x, p.y - 8);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawRefineFlashes(ctx) {
+    if (!ui.refineFlashes.length) return;
+    const now = Date.now();
+    ui.refineFlashes = ui.refineFlashes.filter(f => f.until > now);
+    if (!ui.refineFlashes.length) return;
+    ctx.save();
+    for (const f of ui.refineFlashes) {
+      const a = (f.until - now) / 300;
+      ctx.globalAlpha = Math.max(0, a);
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 16, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    if (ui.refineFlashes.length) requestAnimationFrame(() => redraw());
+  }
+
+  /** Server-side Sobel snap: replace shape.pts[ptIdx] with the refined
+   *  position if the server found a strong nearby edge. We tag each call
+   *  with a sequence number so a late response from an old drag doesn't
+   *  overwrite a point the user has since moved again. */
+  async function refinePoint(shape, ptIdx) {
+    if (!ui.refineOn || !shape || ptIdx == null) return;
+    const p = shape.pts[ptIdx];
+    if (!p) return;
+    const seq = ++ui.refineSeq;
+    const captured = { shape, ptIdx, x: p.x, y: p.y };
+    const refined = await S.refinePoint(video, overlay, p);
+    if (!refined) return;
+    if (seq !== ui.refineSeq) return;                       // user moved on
+    const cur = captured.shape.pts[captured.ptIdx];
+    if (!cur || cur.x !== captured.x || cur.y !== captured.y) return;  // mutated
+    captured.shape.pts[captured.ptIdx] = { x: refined.x, y: refined.y };
+    ui.refineFlashes.push({ x: refined.x, y: refined.y, until: Date.now() + 300 });
+    redraw();
+  }
 
   function refreshReadout() {
     const cal = PM.state.calibration;
+    const qEl = $("readout-quality");
     if (!cal) {
       readoutMode.textContent = "NO CALIBRATION";
       readoutVal.textContent = "—";
       readout.classList.remove("calibrating");
+      qEl.hidden = true;
       return;
     }
     readout.classList.remove("calibrating");
@@ -365,6 +483,20 @@
     } else {
       readoutMode.textContent = `SCALE · ${cal.refName || "ref"}`;
     }
+
+    // Sharpness chip — only if the last detect was recent (< 30 s ago).
+    if (ui.lastSharpness && (Date.now() - ui.lastArucoAt) < 30000) {
+      const sh = ui.lastSharpness;
+      let cls = "good", txt = `SHARP ${sh.toFixed(0)}`;
+      if (sh < 80) { cls = "bad";  txt = `BLUR ${sh.toFixed(0)}`; }
+      else if (sh < 150) { cls = "warn"; txt = `OK ${sh.toFixed(0)}`; }
+      qEl.textContent = txt;
+      qEl.className = "readout-quality " + cls;
+      qEl.hidden = false;
+    } else {
+      qEl.hidden = true;
+    }
+
     const s = PM.state.current || PM.state.shapes[PM.state.shapes.length - 1];
     if (!s) { readoutVal.textContent = "—"; return; }
     const r = PM.computeShape(s);
@@ -439,6 +571,7 @@
   $("opt-grid").addEventListener("change", (e) => { ui.showGrid = e.target.checked; redrawGrid(); });
   $("opt-grid-mm").addEventListener("change", (e) => { ui.gridMM = Math.max(1, +e.target.value || 10); redrawGrid(); });
   $("opt-loupe").addEventListener("change", (e) => { ui.loupeOn = e.target.checked; });
+  $("opt-refine").addEventListener("change", (e) => { ui.refineOn = e.target.checked; });
   $("opt-decimals").addEventListener("change", (e) => { PM.state.decimals = Math.max(0, +e.target.value | 0); redraw(); });
 
   // calibration tabs
@@ -485,12 +618,16 @@
     readoutVal.textContent = `${pendingMM} mm`;
   });
 
-  // sheet detect via server (cv2.aruco)
+  // sheet detect via server (cv2.aruco) — hi-res burst + multi-frame avg
   $("btn-detect").addEventListener("click", async () => {
-    detectStatus.textContent = "Scanning frame on MacBook…";
+    detectStatus.textContent = "Capturing burst at 1280 px…";
     detectStatus.className = "status";
     try {
-      const msg = await S.oneShot(video, overlay, "detect_aruco", {}, "aruco");
+      const msg = await S.burstThenCmd(
+        video, overlay, 6,
+        "detect_aruco", {},
+        { width: 1280, quality: 0.92 },
+      );
       if (!msg.ok) {
         detectStatus.textContent = `Failed: ${msg.reason}`;
         detectStatus.className = "status err";
@@ -504,11 +641,26 @@
       }
       PM.state.calibration = cal;
       persistCalibration();
-      const u = msg.undistorted ? " (undistorted frame)" : "";
-      detectStatus.textContent = `Homography solved from 4 markers${u}.`;
-      detectStatus.className = "status ok";
+      // remember the detection for overlay drawing
+      ui.lastAruco = msg.pose;
+      ui.lastArucoAt = Date.now();
+      ui.lastSharpness = msg.pose.sharpness || 0;
+
+      // build a status line that's honest about what we got
+      const used = msg.pose.frames_used || 1;
+      const stds = msg.pose.corner_std_px || {};
+      const stdVals = Object.values(stds);
+      const maxStd = stdVals.length ? Math.max(...stdVals) : 0;
+      const u = msg.undistorted ? " · undistorted" : "";
+      detectStatus.textContent =
+        `Homography from ${used}-frame avg, max corner σ=${maxStd.toFixed(2)} px` +
+        ` · sharpness ${(msg.pose.sharpness || 0).toFixed(0)}${u}`;
+      detectStatus.className = (maxStd < 0.6 && (msg.pose.sharpness||0) > 120)
+        ? "status ok" : "status";
       redrawGrid();
       redraw();
+      // fade the overlay out after 4 s
+      setTimeout(() => { redraw(); }, 4100);
     } catch (e) {
       detectStatus.textContent = `Timeout or error: ${e.message || e}`;
       detectStatus.className = "status err";

@@ -1,17 +1,27 @@
 """Per-session inference state.
 
-A `SessionPipeline` owns the latest frame received for one session plus
-the in-progress calibration collector. The WebSocket handler drains
-frames into `latest_frame` (replace, don't queue) and lets the consumer
-run inference whenever it's ready. This keeps latency low: if the model
-takes 80 ms but new frames arrive every 100 ms, we never back up.
+A `SessionPipeline` owns:
+  - `latest_frame`           : most recent frame, used by single-shot ops
+                               (sharpness check, intrinsics capture, etc.)
+  - `frame_buffer`           : a small ring of the most recent N frames,
+                               used by multi-frame ArUco averaging
+  - `intrinsics`             : loaded once we see a frame whose resolution
+                               has a saved K + dist on disk
+  - `calib`                  : in-progress charuco collector during the
+                               intrinsics flow
+
+Concurrency: the WebSocket task pushes frames at ~6 fps from one thread;
+inference handlers run in `loop.run_in_executor`. The lock only protects
+the buffer / latest pointer; the inference functions get an immutable
+snapshot.
 """
 from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Deque, List, Optional, Tuple
 
 import numpy as np
 
@@ -24,7 +34,12 @@ except Exception:
 
 from . import aruco as aruco_mod
 from . import intrinsics as intr_mod
+from . import refine as refine_mod
 from . import yolo as yolo_mod
+
+
+# How many frames to keep for averaging. At 6 fps this covers ~1.3 s.
+FRAME_BUFFER_LEN = 8
 
 
 @dataclass
@@ -33,6 +48,9 @@ class SessionPipeline:
     latest_frame: Optional[np.ndarray] = None
     latest_frame_at: float = 0.0
     frame_count: int = 0
+    frame_buffer: Deque[Tuple[float, np.ndarray]] = field(
+        default_factory=lambda: deque(maxlen=FRAME_BUFFER_LEN)
+    )
     lock: threading.Lock = field(default_factory=threading.Lock)
     intrinsics: Optional[intr_mod.Intrinsics] = None
     calib: Optional[intr_mod.CalibCollector] = None
@@ -48,7 +66,11 @@ class SessionPipeline:
             self.latest_frame = img
             self.latest_frame_at = time.time()
             self.frame_count += 1
-        # Try to attach intrinsics if we haven't yet and one matches the size.
+            # Reset the averaging buffer when the resolution changes
+            # (e.g. user clicks "Detect" which switches to hi-res mode).
+            if self.frame_buffer and self.frame_buffer[-1][1].shape != img.shape:
+                self.frame_buffer.clear()
+            self.frame_buffer.append((time.time(), img))
         if self.intrinsics is None:
             h, w = img.shape[:2]
             cand = intr_mod.load((w, h))
@@ -63,19 +85,52 @@ class SessionPipeline:
             return None
         return intr_mod.undistort(f, self.intrinsics)
 
+    def _recent_undistorted(self, max_age_s: float = 1.5) -> List[np.ndarray]:
+        with self.lock:
+            now = time.time()
+            same_shape = None
+            picks: List[np.ndarray] = []
+            # Walk newest → oldest, keep frames sharing the latest shape,
+            # so a mid-stream resolution change doesn't poison the average.
+            for ts, frame in reversed(self.frame_buffer):
+                if now - ts > max_age_s:
+                    break
+                if same_shape is None:
+                    same_shape = frame.shape
+                elif frame.shape != same_shape:
+                    break
+                picks.append(frame)
+        # newest first → reverse to chronological for any consumers who care
+        picks.reverse()
+        return [intr_mod.undistort(f, self.intrinsics) for f in picks]
+
     # ─── operations ─────────────────────────────────────────────
 
     def detect_aruco(self) -> dict:
         if (msg := aruco_mod.status_msg()):
             return {"ok": False, "reason": msg}
+        frames = self._recent_undistorted()
+        if not frames:
+            return {"ok": False, "reason": "no frame yet"}
+        pose = aruco_mod.detect_sheet_avg(frames)
+        if pose is None:
+            return {"ok": False, "reason": "could not see all four sheet markers"}
+        return {
+            "ok": True,
+            "pose": pose.to_json(),
+            "undistorted": self.intrinsics is not None,
+        }
+
+    def refine_point(self, x: float, y: float, radius: int = 20) -> dict:
+        if (msg := aruco_mod.status_msg()):
+            return {"ok": False, "reason": msg}
         f = self._snapshot()
         if f is None:
             return {"ok": False, "reason": "no frame yet"}
-        pose = aruco_mod.detect_sheet(f)
-        if pose is None:
-            return {"ok": False, "reason": "could not see all four sheet markers"}
-        return {"ok": True, "pose": pose.to_json(),
-                "undistorted": self.intrinsics is not None}
+        h, wid = f.shape[:2]
+        out = refine_mod.refine_point(f, x, y, radius=radius)
+        out["image_size"] = [int(wid), int(h)]
+        return out
 
     def detect_yolo(self, prompts=None) -> dict:
         if (msg := yolo_mod.status_msg()):
@@ -114,7 +169,13 @@ class SessionPipeline:
             f = self.latest_frame
         if f is None:
             return {"ok": False, "reason": "no frame yet"}
-        return self.calib.add_frame(f)
+        # Reject blurry captures early — they only poison the calibration.
+        sharp = aruco_mod.sharpness(f)
+        if sharp < 80.0:
+            return {"ok": False, "reason": f"frame too blurry (sharpness={sharp:.0f}); hold steady"}
+        res = self.calib.add_frame(f)
+        res["sharpness"] = sharp
+        return res
 
     def calib_clear(self) -> dict:
         if self.calib is not None:

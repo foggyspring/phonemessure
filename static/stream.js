@@ -35,6 +35,12 @@ S._dispatch = function (msg) {
   }
 };
 
+S.off = function (event, fn) {
+  const arr = S._handlers.get(event);
+  if (!arr) return;
+  S._handlers.set(event, arr.filter(h => h !== fn));
+};
+
 S.connect = function (sid) {
   S.sid = sid;
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -72,13 +78,18 @@ S.send = function (cmd, extra) {
 };
 
 /** Capture one frame from `video` matched to `overlay`'s aspect/size and
- *  send it as binary JPEG. Returns the work-canvas size used. */
+ *  send it as binary JPEG. Returns the work-canvas size used.
+ *
+ *  `opts.width`   — output width in pixels (default 640 for the live loop;
+ *                   1024 for refine taps; 1280 for ArUco detection bursts)
+ *  `opts.quality` — JPEG quality 0..1 (default S.jpegQuality = 0.72) */
 S.sendFrame = async function (video, overlay, opts = {}) {
   if (!S.sock || S.sock.readyState !== 1) return null;
   if (!video.videoWidth) return null;
 
   // Match the overlay's "cover" rendering so server pixel coords ↔ overlay px.
   const targetW = opts.width || 640;
+  const quality = opts.quality != null ? opts.quality : S.jpegQuality;
   const aspect = overlay.clientWidth / overlay.clientHeight;
   const W = targetW;
   const H = Math.round(W / aspect);
@@ -94,9 +105,8 @@ S.sendFrame = async function (video, overlay, opts = {}) {
   else            { sh = vw / arO; sy = (vh - sh) / 2; }
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
 
-  // toBlob is async but cheaper than toDataURL.
   const blob = await new Promise((res) =>
-    S._buf.toBlob(res, "image/jpeg", S.jpegQuality)
+    S._buf.toBlob(res, "image/jpeg", quality)
   );
   if (!blob) return null;
   const buf = await blob.arrayBuffer();
@@ -127,27 +137,80 @@ S.stopStream = function () {
   if (S._timer) { clearTimeout(S._timer); S._timer = null; }
 };
 
+const _EVT_FOR = {
+  detect_aruco: "aruco",
+  detect_yolo: "yolo",
+  refine_point: "refine",
+  calib_start: "calib",
+  calib_capture: "calib",
+  calib_clear: "calib",
+  calib_solve: "calib",
+  intrinsics_status: "intrinsics",
+};
+
 /** One-shot: send a frame, then issue a command, return a promise that
- *  resolves with the matching server event (or rejects on timeout). */
-S.oneShot = async function (video, overlay, cmd, extra = {}, eventName = null, timeoutMs = 8000) {
-  const evt = eventName || ({
-    detect_aruco: "aruco",
-    detect_yolo: "yolo",
-    calib_start: "calib",
-    calib_capture: "calib",
-    calib_clear: "calib",
-    calib_solve: "calib",
-    intrinsics_status: "intrinsics",
-  }[cmd] || "result");
-  await S.sendFrame(video, overlay);
+ *  resolves with the matching server event (or rejects on timeout).
+ *
+ *  `opts.width` / `opts.quality` override the frame size & JPEG quality for
+ *  this call only — used for high-resolution ArUco detection. */
+S.oneShot = async function (video, overlay, cmd, extra = {}, eventName = null,
+                            timeoutMs = 8000, opts = {}) {
+  const evt = eventName || _EVT_FOR[cmd] || "result";
+  await S.sendFrame(video, overlay, opts);
   return new Promise((resolve, reject) => {
-    const to = setTimeout(() => { S._handlers.set(evt, (S._handlers.get(evt)||[]).filter(h => h !== handler)); reject(new Error("timeout")); }, timeoutMs);
+    const to = setTimeout(() => { S.off(evt, handler); reject(new Error("timeout")); }, timeoutMs);
     const handler = (msg) => {
       clearTimeout(to);
-      S._handlers.set(evt, (S._handlers.get(evt)||[]).filter(h => h !== handler));
+      S.off(evt, handler);
       resolve(msg);
     };
     S.on(evt, handler);
     S.send(cmd, extra);
   });
+};
+
+/** Burst-send N high-quality frames at the same resolution (so the server's
+ *  averaging buffer is full of hi-res samples), then run the command.
+ *
+ *  Used by the "Detect markers" button to drop ArUco corner noise as 1/√N. */
+S.burstThenCmd = async function (video, overlay, n, cmd, extra = {}, opts = {}) {
+  const evt = _EVT_FOR[cmd] || "result";
+  // Pause the regular low-res stream so we don't interleave different
+  // resolutions in the server's buffer (which would invalidate the
+  // averaging window).
+  const wasStreaming = S.streaming;
+  S.stopStream();
+  try {
+    for (let i = 0; i < n; i++) {
+      await S.sendFrame(video, overlay, opts);
+      // 80 ms between bursts — phone camera updates at ~30 fps so this
+      // gives us decorrelated samples without ridiculous bandwidth.
+      await new Promise(r => setTimeout(r, 80));
+    }
+    return await new Promise((resolve, reject) => {
+      const to = setTimeout(() => { S.off(evt, handler); reject(new Error("timeout")); }, 10000);
+      const handler = (msg) => { clearTimeout(to); S.off(evt, handler); resolve(msg); };
+      S.on(evt, handler);
+      S.send(cmd, extra);
+    });
+  } finally {
+    if (wasStreaming) S.startStream(video, overlay);
+  }
+};
+
+/** Convenience wrapper for refine_point.
+ *  Sends a frame at a fixed width (1024 px) — high enough for sub-pixel
+ *  Sobel to bite, low enough not to blow up bandwidth per tap — then asks
+ *  the server to snap the touch position to the nearest strong edge. */
+S.refinePoint = async function (video, overlay, p_overlay) {
+  const W = 1024;
+  const k = W / overlay.clientWidth;  // overlay-px × k = frame-px
+  const x = p_overlay.x * k;
+  const y = p_overlay.y * k;
+  try {
+    const msg = await S.oneShot(video, overlay, "refine_point",
+      { x, y, radius: 22 }, "refine", 1500, { width: W, quality: 0.9 });
+    if (!msg.ok || !msg.refined) return null;
+    return { x: msg.x / k, y: msg.y / k, gradient: msg.gradient };
+  } catch { return null; }
 };

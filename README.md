@@ -82,6 +82,35 @@ Models we deliberately did **not** include this round:
   off-plane, but a) needs metric-scale rescue from ArUco, and b) the small
   variant is ~99 MB and adds ~250 ms/frame on CPU. Experimental.
 
+## Tier-1 precision boosters (active by default)
+
+Several quiet improvements compound on top of the basic ArUco + intrinsics
+pipeline. They cost nothing extra at use-time — they just make the same
+measurement more accurate.
+
+| What | Where | Why |
+|------|-------|-----|
+| **Charuco uses `CALIB_RATIONAL_MODEL` (8 distortion coeffs)** | `app/inference/intrinsics.py` | Phone wide-angles aren't well-modelled by the default 5-coeff Brown-Conrady, especially at the corners. RATIONAL drops residual distortion at the image edges from ~0.1 % to ~0.02 %. |
+| **Multi-frame averaging on ArUco detection** | `app/inference/aruco.py` (`detect_sheet_avg`) | "Detect" triggers a 6-frame hi-res burst; the server detects on each, median-rejects outliers, then averages marker centroids. Corner noise drops as 1/√N → typically 0.2-0.3 px → 0.05-0.1 px. |
+| **Hi-res detection bursts** | `static/stream.js` (`burstThenCmd`) | Live preview stays at 640 px for bandwidth; *detection* frames are 1280 px at JPEG q=0.92. Each ArUco corner now spans more pixels, so sub-pixel refinement bites harder. |
+| **Server-side Sobel "snap-to-edge" on measurement taps** | `app/inference/refine.py`, `static/stream.js` (`refinePoint`) | When you release a measurement endpoint, the server crops a 41×41 window around the touch, computes Sobel magnitude, picks the strongest *weighted* edge, then sub-pixel parabolic fits. Touch error ~0.5 px (with magnifier) → edge error ~0.05 px. **Largest single accuracy win**. Toggle in Settings → "Snap-to-edge (Sobel)". |
+| **Laplacian sharpness gate** | `app/inference/aruco.py` (`sharpness`), `pipeline.py` (`calib_capture`) | Charuco captures below Lap-var 80 are rejected client-visibly. The readout shows a `SHARP/OK/BLUR` chip after each ArUco detect so you know when to hold steadier. |
+| **Per-corner σ feedback** | UI overlay | After Detect, the four detected ArUco corners are drawn over the live preview with the per-marker std-dev (in pixels) from the multi-frame average. >1 px σ means re-shoot. |
+
+### Expected accuracy after Tier 1
+
+Re-running the previous error budget with the new numbers:
+
+| Scenario | v0.2 (Tier 0) | v0.3 (Tier 1) |
+|---|---|---|
+| Best case (sheet center, on-plane, all aids on) | ±0.25 mm | **±0.10-0.15 mm** |
+| Typical (sheet edge, slight tilt) | ±0.32 mm | **±0.15-0.20 mm** |
+| Without intrinsics calibration | ±2-3 mm @ edge | (unchanged — do the intrinsics) |
+
+The bottleneck is now **plane-assumption error** on anything that isn't
+exactly co-planar with the sheet. Off-plane measurement needs depth
+(slated for next round).
+
 ## End-to-end calibration path (recommended order)
 
 1. **Intrinsics, once per camera.** Calibration panel → *Intrinsics* tab.

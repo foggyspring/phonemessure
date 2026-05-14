@@ -218,6 +218,18 @@ input, textarea {
 
 .readout.calibrating .readout-val { color: var(--amber); }
 
+.readout-quality {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-top: 2px;
+  font-family: var(--mono);
+}
+.readout-quality.good { color: var(--good); }
+.readout-quality.warn { color: var(--amber); }
+.readout-quality.bad  { color: var(--warn); }
+
 /* ─── magnifier ───────────────────────────────────────────────── */
 
 .loupe {

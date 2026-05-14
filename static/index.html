@@ -32,6 +32,7 @@
     <div id="readout" class="readout">
       <span id="readout-val" class="readout-val">—</span>
       <span id="readout-mode" class="readout-mode">no calib</span>
+      <span id="readout-quality" class="readout-quality" hidden></span>
     </div>
 
     <!-- top bar -->
@@ -83,6 +84,10 @@
         <label class="row">
           <span>Magnifier on touch</span>
           <input type="checkbox" id="opt-loupe" checked />
+        </label>
+        <label class="row">
+          <span>Snap-to-edge (Sobel)</span>
+          <input type="checkbox" id="opt-refine" checked />
         </label>
         <label class="row">
           <span>Decimals</span>
