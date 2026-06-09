@@ -92,3 +92,10 @@ def test_db_schema_version_stamped(tmp_path):
     store.count_users(path=db)                      # forces connect → migrate
     v = sqlite3.connect(db).execute("PRAGMA user_version").fetchone()[0]
     assert v == store._SCHEMA_VERSION
+
+
+def test_health_reports_dependencies():
+    h = client.get("/api/health").json()
+    assert h["ok"] is True and h["db"] is True
+    assert "version" in h and "ai_provider" in h and "price_feed" in h
+    assert h["ai_provider"] == "mock" and h["ai_live"] is False

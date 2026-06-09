@@ -216,13 +216,30 @@ def build_app() -> FastAPI:
 
     @app.get("/api/health")
     def health() -> dict:
-        kernel = False
-        try:  # is OpenCASCADE importable?
+        try:
             import OCC.Core  # noqa: F401
             kernel = True
         except Exception:
             kernel = False
-        return {"ok": True, "brep_kernel": kernel}
+        db_ok = True
+        try:
+            store.count_users()
+        except Exception as exc:
+            db_ok = False
+            log.error("health: DB check failed: %s", exc)
+        from .ai import get_provider
+        from .pricing import get_price_service
+        prov = get_provider()
+        svc = get_price_service()
+        return {
+            "ok": db_ok,
+            "version": "0.3.0",
+            "brep_kernel": kernel,
+            "db": db_ok,
+            "ai_provider": prov.name,
+            "ai_live": prov.name != "mock",
+            "price_feed": (svc.feed.name if svc and svc.feed else "static"),
+        }
 
     @app.get("/api/backends")
     def backends() -> dict:
