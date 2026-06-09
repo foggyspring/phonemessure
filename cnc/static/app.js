@@ -1178,6 +1178,11 @@ function main() {
   $("hist-refresh").addEventListener("click", loadHistory);
   $("admin-btn").addEventListener("click", openAdmin);
   $("admin-close").addEventListener("click", closeAdmin);
+  document.querySelectorAll(".admin-tab").forEach((t) => t.addEventListener("click", () => {
+    const name = t.dataset.tab;
+    document.querySelectorAll(".admin-tab").forEach((x) => x.classList.toggle("on", x === t));
+    document.querySelectorAll(".admin-pane").forEach((p) => p.classList.toggle("on", p.dataset.pane === name));
+  }));
   $("admin-save").addEventListener("click", saveAdmin);
   $("admin-modal").addEventListener("click", (e) => { if (e.target.id === "admin-modal") closeAdmin(); });
   $("logout-btn").addEventListener("click", logout);
