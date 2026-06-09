@@ -35,6 +35,8 @@ _CUTTING_PATH = Path(__file__).resolve().parent.parent / "data" / "cutting.json"
 # Hard caps so a pathological/huge mesh can't hang the request.
 _MAX_LEVELS = 600
 _MAX_FACES = 400_000
+_MAX_PART_MM = 1200.0     # above this, inline toolpath sim is too slow -> analytic
+_MAX_OFFSET_PASSES = 400  # bound pocket-clearing passes; extrapolate the rest
 
 
 class ToolpathUnavailable(RuntimeError):
@@ -93,12 +95,17 @@ def _offset_pass_length(region, stepover: float) -> float:
         return 0.0
     total = 0.0
     k = 0.5
-    while k < 5000:
+    while k < _MAX_OFFSET_PASSES:
         ring = region.buffer(-stepover * k, join_style=2)
         if ring.is_empty:
-            break
+            return total
         total += ring.length
         k += 1.0
+    # Hit the pass cap (very large pocket): extrapolate the remaining area as
+    # straight passes (area / stepover) instead of buffering thousands of rings.
+    rem = region.buffer(-stepover * k, join_style=2)
+    if not rem.is_empty:
+        total += rem.area / stepover
     return total
 
 
@@ -249,6 +256,11 @@ def load_mesh(stl_bytes: bytes, scale: float = 1.0):
         raise ToolpathUnavailable(f"mesh too large ({len(mesh.faces)} faces)")
     if scale and scale != 1.0:
         mesh.apply_scale(scale)
+    ext = mesh.bounds[1] - mesh.bounds[0]
+    if float(max(ext)) > _MAX_PART_MM:
+        raise ToolpathUnavailable(
+            f"part {float(max(ext)):.0f}mm exceeds {_MAX_PART_MM:.0f}mm inline-sim cap"
+        )
     return mesh
 
 

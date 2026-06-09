@@ -95,6 +95,17 @@ def build_quote(
     if unit_scale != 1.0:
         metrics = metrics.scaled(unit_scale)
 
+    # Reject parts beyond any real machining envelope — almost always a wrong
+    # unit / scale (e.g. an inch file read as mm becomes metres), and avoids
+    # emitting an absurd million-minute quote.
+    max_dim = max(metrics.dims_mm)
+    max_part = float(shop.business.get("max_part_mm", 0) or 0)
+    if max_part and max_dim > max_part:
+        raise QuoteError(
+            f"零件最大尺寸 {max_dim:.0f}mm 超出可加工范围（{max_part:.0f}mm），"
+            f"请确认图纸单位或缩放。Part exceeds machinable envelope."
+        )
+
     feat = analyze(
         metrics,
         holes=req.holes,
@@ -103,12 +114,9 @@ def build_quote(
         min_wall_mm=req.min_wall_mm,
     )
 
-    # Sanity check on absolute size — a likely wrong-unit upload.
-    max_dim = max(metrics.dims_mm)
+    # Suspiciously tiny part — likely an inch drawing read as mm.
     if max_dim < 3.0:
         feat.warnings.insert(0, f"零件最大尺寸仅 {max_dim:.2f}mm，疑似单位有误（英寸图纸？），请确认单位。")
-    elif max_dim > 3000.0:
-        feat.warnings.insert(0, f"零件最大尺寸 {max_dim:.0f}mm 异常偏大，请确认单位/缩放。")
 
     plan, backend_info = estimators.make_plan(
         feat, material, shop,

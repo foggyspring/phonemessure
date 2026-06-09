@@ -39,6 +39,7 @@
     "quantity_breaks": [1, 5, 10, 25, 50, 100],
     "tax_rate": 0.13,
     "tax_label": "增值税 VAT",
-    "quote_valid_days": 30
+    "quote_valid_days": 30,
+    "max_part_mm": 2500
   }
 }

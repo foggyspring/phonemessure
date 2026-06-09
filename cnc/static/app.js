@@ -16,6 +16,9 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+// Escape user-controlled strings (filenames, part names) before innerHTML.
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // Material → render look (color + metalness/roughness) for a believable preview.
 const MAT_LOOK = {
@@ -208,7 +211,7 @@ async function handleFile(file) {
   state.file = file;
   state.fileBytes = await file.arrayBuffer();
   $("viewer-spinner").classList.remove("hidden");
-  $("viewer-meta").innerHTML = `解析中 <b>${file.name}</b> …`;
+  $("viewer-meta").innerHTML = `解析中 <b>${esc(file.name)}</b> …`;
 
   let res;
   try {
@@ -245,7 +248,7 @@ async function handleFile(file) {
 
   const g = data.geometry;
   $("viewer-meta").innerHTML =
-    `<b>${file.name}</b> · ${data.source_format.toUpperCase()}` +
+    `<b>${esc(file.name)}</b> · ${data.source_format.toUpperCase()}` +
     `<br><span class="chip">外形 ${g.dims_mm.map((v) => v.toFixed(1)).join(" × ")} mm</span>` +
     `<span class="chip">体积 ${g.volume_cm3} cm³</span>` +
     `<span class="chip">表面积 ${g.area_cm2} cm²</span>` +
@@ -504,7 +507,7 @@ async function loadHistory() {
     const tr = document.createElement("tr");
     const when = (r.created_at || "").replace("T", " ").slice(5, 16);
     tr.innerHTML =
-      `<td>${r.part_name || "part"}<div class="h-id">${r.id}</div></td>` +
+      `<td>${esc(r.part_name || "part")}<div class="h-id">${esc(r.id)}</div></td>` +
       `<td>${r.material} × ${r.quantity}<br><span class="muted tiny">${when}</span></td>` +
       `<td class="h-price">${money(r.unit_price, r.currency || "CNY")}</td>` +
       `<td class="h-pdf"><a href="/api/quotes/${r.id}/pdf" target="_blank" rel="noopener">PDF</a></td>`;

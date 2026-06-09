@@ -61,6 +61,20 @@ def test_part_volume_clamped_to_stock():
     assert any("毛坯" in n for n in pl["notes"])   # warned about the bad model
 
 
+# ---- regression: reject parts beyond the machinable envelope --------------
+def test_oversized_part_rejected():
+    from cnc.service import QuoteError
+    # an inch file of a 100mm part read as mm → 2540mm > 2500 envelope.
+    bad = MeshMetrics(triangles=0, bbox_min=(0, 0, 0), bbox_max=(2540, 1200, 800),
+                      volume_mm3=1e9, area_mm2=1e7)
+    try:
+        build_quote(bad, QuoteRequest(material="AL6061", quantity=1))
+    except QuoteError as e:
+        assert "范围" in str(e) or "envelope" in str(e)
+        return
+    raise AssertionError("expected QuoteError for an oversized part")
+
+
 # ---- property loop over random shapes (needs trimesh) ---------------------
 trimesh = pytest.importorskip("trimesh")
 

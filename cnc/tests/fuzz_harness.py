@@ -1,8 +1,9 @@
 """Standalone fuzz/property harness — run: PYTHONPATH=. python cnc/tests/fuzz_harness.py [N] [seed]
 
 NOT collected by pytest (no test_ prefix). Generates diverse + pathological
-parts, runs the full quote pipeline, and checks invariants. The permanent
-regression subset lives in test_invariants.py."""
+parts (incl. inch units, adversarial customer strings), runs the full quote
+pipeline, and checks invariants (pricing, tax, weight, determinism, PDF). The
+permanent regression subset lives in test_invariants.py."""
 import math, random, time, traceback, sys
 import trimesh
 import numpy as np
@@ -125,6 +126,18 @@ def check(case, payload, dt, problems):
         for o in pl.get("operations",[]):
             for k,v in o.items():
                 if isinstance(v,float) and not math.isfinite(v): bad(f"op {o.get('op')} {k} not finite")
+    # tax block
+    net,tax,gt=q.get("net_total_cny"),q.get("tax_cny"),q.get("total_incl_tax_cny")
+    if None in (net,tax,gt): bad("tax block missing")
+    else:
+        if not all(math.isfinite(v) for v in (net,tax,gt)): bad("tax not finite")
+        if abs(gt-(net+tax))>0.05: bad(f"grand!=net+tax ({gt} vs {net}+{tax})")
+        if abs(tax-net*q.get("tax_rate",0))>0.05: bad("tax!=net*rate")
+        if q.get("valid_until") is None: bad("no valid_until")
+    # weight
+    g=payload["geometry"]; pw=g.get("part_weight_g"); sw=g.get("stock_weight_g")
+    if pw is None or not math.isfinite(pw) or pw<0: bad(f"part_weight {pw}")
+    if sw is not None and pw is not None and pw>sw+1e-3: bad(f"part_weight>stock_weight ({pw}>{sw})")
 
 def run(n=100, seed=12345):
     rng=random.Random(seed)
@@ -141,14 +154,17 @@ def run(n=100, seed=12345):
                 holes.append(Hole(diameter_mm=rng_case.uniform(1,16),depth_mm=rng_case.uniform(2,60),
                                   count=rng_case.randint(1,8),threaded=rng_case.random()<0.5))
         backend=rng_case.choice(["auto","toolpath","analytic"])
-        case=dict(i=i,shape=name,mat=mat,fin=fin,qty=qty,backend=backend,nholes=len(holes),
+        units=rng_case.choice(["mm","mm","mm","inch"])
+        cust=rng_case.choice(["","Acme","客户 A/B","<img src=x onerror=1>","O'Brien & Sons",
+                              "a"*150,"Müller GmbH","\"';DROP TABLE","汉字客户"])
+        case=dict(i=i,shape=name,mat=mat,fin=fin,qty=qty,backend=backend,nholes=len(holes),units=units,
                   tight=rng_case.random()<0.3,five=rng_case.random()<0.2,rush=rng_case.random()<0.2)
         try:
             stl=mesh.export(file_type="stl")
             metrics=metrics_from_stl_bytes(stl)
             req=QuoteRequest(material=mat,quantity=qty,finish=fin,holes=holes,
                              tight_tolerance=case["tight"],requires_5axis=case["five"],rush=case["rush"],
-                             part_name=name)
+                             part_name=cust or name, units=units, customer=cust)
             t0=time.time()
             payload=build_quote(metrics,req,shop,mesh_stl=stl,backend=backend)
             dt=time.time()-t0
@@ -171,9 +187,28 @@ def run(n=100, seed=12345):
                 if pdf[:5]!=b"%PDF-": problems.append((case,"bad PDF"))
             ok+=1
         except (QuoteError,) as e:
-            problems.append((case,f"QuoteError(unexpected, inputs were valid): {e}"))
+            # an inch-scaled pathological part may legitimately exceed the
+            # machinable envelope — that rejection is expected, not a bug.
+            if "范围" in str(e) or "envelope" in str(e):
+                ok+=1
+            else:
+                problems.append((case,f"QuoteError(unexpected, inputs were valid): {e}"))
         except Exception as e:
             problems.append((case,f"EXCEPTION {e.__class__.__name__}: {e}\n"+traceback.format_exc().splitlines()[-3]))
+    # adversarial strings into the PDF (customer / part name)
+    from cnc.quote import build_quote_pdf
+    from cnc.tests.fixtures import cube_stl
+    for s in ["<img src=x onerror=1>","&amp; <b>x</b> </td>","汉字 & <tag>","'\";DROP--",
+              "x"*300,"\n\t\r weird","€™½∞","🔧⚙️","../../etc/passwd"]:
+        try:
+            pl=build_quote(metrics_from_stl_bytes(cube_stl(40)),
+                           QuoteRequest(material="AL6061",quantity=2,part_name=s,customer=s),shop)
+            pdf=build_quote_pdf(pl)
+            if pdf[:5]!=b"%PDF-":
+                problems.append(({"i":-1,"shape":"advPDF","mat":"-","fin":"-","qty":0,"backend":"-","nholes":0,"units":"-"},f"bad PDF {s[:18]!r}"))
+        except Exception as e:
+            problems.append(({"i":-1,"shape":"advPDF","mat":"-","fin":"-","qty":0,"backend":"-","nholes":0,"units":"-"},f"PDF EXC {s[:18]!r}: {e}"))
+
     print(f"\nran {n} cases · clean {ok} · backends {backends} · problems {len(problems)}")
     for case,msg in problems[:40]:
         print(f"  ✗ #{case['i']:3d} {case['shape']:7s} {case['mat']:11s} q{case['qty']:<3} {case['backend']:8s} holes{case['nholes']} -> {msg}")

@@ -79,6 +79,24 @@ def test_make_plan_falls_back_without_mesh():
     assert info["used"] == "analytic"
 
 
+def test_oversized_part_falls_back_fast():
+    """Perf guard: a part bigger than the inline-sim cap must fall back to
+    analytic (found by fuzzing — a 10m inch-misread part took 25s otherwise)."""
+    import time
+    from cnc import estimators
+    shop = load()
+    big = trimesh.creation.box(extents=(1600, 900, 500))
+    big.apply_translation((800, 450, 250))
+    sb = big.export(file_type="stl")
+    feat = analyze(metrics_from_stl_bytes(sb))
+    t0 = time.time()
+    plan, info = estimators.make_plan(feat, shop.material("AL6061"), shop,
+                                      backend="toolpath", mesh_stl=sb)
+    assert time.time() - t0 < 3.0          # must not grind through 600 levels
+    assert info["used"] == "analytic"
+    assert "cap" in info.get("fallback_reason", "")
+
+
 def test_pocket_roughs_more_than_solid():
     """Regression: a milled cavity must add roughing vs the same solid block.
 
