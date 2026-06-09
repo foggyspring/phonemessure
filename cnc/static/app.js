@@ -16,6 +16,7 @@ const state = {
   token: null,
   user: null,
   leadTime: null,   // selected lead-time tier key (null → standard default)
+  fx: { rate: 1, symbol: "¥", currency: "CNY" },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -362,6 +363,7 @@ function buildParams(save) {
     machine: $("machine").value || null,
     tolerance: $("tolerance").value,
     surface_finish: $("surface_finish").value,
+    currency: $("currency").value,
     addons: [...document.querySelectorAll("#addons input:checked")].map((c) => c.dataset.addon),
     requires_5axis: $("fiveaxis").checked,
     lead_time: state.leadTime,
@@ -414,7 +416,10 @@ async function requestQuote(save) {
 
 // ───────────────────────── render result ─────────────────────────
 const fmtNum = (v) => Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const money = (v, cur = "CNY") => (cur === "CNY" ? "¥" : cur + " ") + fmtNum(v);
+const money = (v, cur = "CNY") => {
+  const fx = state.fx || { rate: 1, symbol: "¥" };
+  return fx.symbol + fmtNum(Number(v) * fx.rate);
+};
 function kv(rows) { return rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join(""); }
 
 function countUp(el, from, to, cur) {
@@ -438,6 +443,7 @@ function classifyDFM(text) {
 }
 
 function renderResult(p, isLive) {
+  state.fx = p.fx || { rate: 1, symbol: "¥", currency: "CNY" };
   const cur = p.quote.currency;
   const g = p.geometry, pl = p.plan, q = p.quote, r = q.requested;
 
@@ -888,7 +894,7 @@ function main() {
   $("cal-submit").addEventListener("click", submitCalibration);
 
   // Live re-quote on any parameter change (once a first quote exists).
-  ["quantity", "finish", "machine", "minwall", "tolerance", "surface_finish", "fiveaxis", "backend", "units", "customer"].forEach((id) =>
+  ["quantity", "finish", "machine", "minwall", "tolerance", "surface_finish", "currency", "fiveaxis", "backend", "units", "customer"].forEach((id) =>
     $(id).addEventListener("change", scheduleLiveQuote));
   $("material").addEventListener("change", scheduleLiveQuote);
   $("addons").addEventListener("change", scheduleLiveQuote);

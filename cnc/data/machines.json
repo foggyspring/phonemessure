@@ -63,6 +63,11 @@
       {"key": "first_article","label": "首件检测报告 FAI",        "batch_cny": 150.0, "per_part_cny": 0.0}
     ],
     "quantity_breaks": [1, 5, 10, 25, 50, 100],
+    "fx_rates": {
+      "CNY": {"symbol": "¥", "rate": 1.0},
+      "USD": {"symbol": "$", "rate": 0.14},
+      "EUR": {"symbol": "€", "rate": 0.13}
+    },
     "tax_rate": 0.13,
     "tax_label": "增值税 VAT",
     "quote_valid_days": 30,

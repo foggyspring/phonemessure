@@ -231,3 +231,11 @@ def test_qa_addons_raise_price_and_appear():
     assert {a["key"] for a in add["quote"]["addons"]} == {"material_cert", "dim_report"}
     # per-part addon (dim_report) means the gap is bigger than just amortized batch
     assert not base["quote"]["addons"]
+
+
+def test_currency_fx_block():
+    m = _metrics()
+    cny = build_quote(m, QuoteRequest(material="AL6061", quantity=5, currency="CNY"))["fx"]
+    usd = build_quote(m, QuoteRequest(material="AL6061", quantity=5, currency="USD"))["fx"]
+    assert cny["rate"] == 1.0 and cny["symbol"] == "¥" and not cny["indicative"]
+    assert usd["currency"] == "USD" and 0 < usd["rate"] < 1 and usd["indicative"]

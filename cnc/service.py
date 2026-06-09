@@ -14,6 +14,15 @@ from . import estimators
 from .calibration import factor_for
 from .dfm import analyze_dfm
 from .suggest import suggest_materials
+
+
+def _resolve_fx(shop: ShopData, currency: str | None) -> dict:
+    """Display-currency conversion off the CNY base (rates are indicative)."""
+    rates = shop.business.get("fx_rates") or {"CNY": {"symbol": "¥", "rate": 1.0}}
+    cur = (currency or "CNY").upper()
+    info = rates.get(cur, rates["CNY"])
+    return {"currency": cur, "symbol": info["symbol"], "rate": float(info["rate"]),
+            "indicative": cur != "CNY"}
 from .engine import ShopData, load
 from .engine import costing as costing_mod
 from .geometry import MeshMetrics, analyze
@@ -37,6 +46,7 @@ class QuoteRequest:
     holes: list[Hole] = field(default_factory=list)
     part_name: str = ""
     units: str = "mm"          # "mm" | "inch" — unit of the uploaded geometry
+    currency: str | None = None  # display currency (CNY base)
     customer: str = ""         # optional customer / project for the quote header
 
     @classmethod
@@ -67,6 +77,7 @@ class QuoteRequest:
             holes=holes,
             part_name=str(p.get("part_name", "")),
             units=("inch" if str(p.get("units", "mm")).lower() in ("inch", "in") else "mm"),
+            currency=(str(p["currency"]) if p.get("currency") else None),
             customer=str(p.get("customer", "")),
         )
 
@@ -270,5 +281,6 @@ def build_quote(
                            requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
                            wall_auto=auto_wall is not None, holes_auto=holes_auto),
         "material_suggestions": suggest_materials(feat, material, finish, shop, req.quantity),
+        "fx": _resolve_fx(shop, req.currency),
         "estimator": backend_info,
     }
