@@ -81,9 +81,30 @@ _login_fails: dict[str, deque] = defaultdict(deque)
 
 
 _AI_MAX_PER_MIN = 40
+_AI_MAX_PER_DAY = 500
 _ai_calls: dict[str, deque] = defaultdict(deque)
+_ai_calls_day: dict[str, deque] = defaultdict(deque)
 _AI_MSG_MAX = 2000
 _AI_HISTORY_MAX = 24
+
+
+def _ai_cost_guard(ip: str, authorization: str | None) -> None:
+    """Protect LLM spend: a live provider requires login unless AI_PUBLIC=1,
+    plus a per-IP daily cap. The offline mock stays open (free) for demo."""
+    from .ai import get_provider
+    live = get_provider().name != "mock"
+    if live and os.environ.get("AI_PUBLIC", "0") != "1":
+        tok = auth.bearer_from_header(authorization)
+        if not (tok and auth.verify_token(store.get_secret(), tok)):
+            raise HTTPException(status_code=401,
+                                detail="AI 已接入真实模型，请登录后使用（或设 AI_PUBLIC=1 开放）。")
+    dq = _ai_calls_day[ip]
+    now = time.time()
+    while dq and now - dq[0] > 86400:
+        dq.popleft()
+    if len(dq) >= _AI_MAX_PER_DAY:
+        raise HTTPException(status_code=429, detail="今日 AI 调用已达上限。")
+    dq.append(now)
 
 
 def _ai_throttled(ip: str) -> bool:
@@ -227,6 +248,7 @@ def build_app() -> FastAPI:
         ip = request.client.host if request.client else "unknown"
         if _ai_throttled(ip):
             raise HTTPException(status_code=429, detail="AI 请求过于频繁，请稍后再试。")
+        _ai_cost_guard(ip, authorization)
         message = str(message)
         if len(message) > _AI_MSG_MAX:
             raise HTTPException(status_code=400, detail=f"消息过长（>{_AI_MSG_MAX} 字）。")
@@ -301,11 +323,14 @@ def build_app() -> FastAPI:
 
     @app.post("/api/ai/analyze")
     async def ai_analyze(
+        request: Request,
         params: str = Form("{}"),
         file: UploadFile | None = File(None),
+        authorization: str | None = Header(default=None),
     ) -> JSONResponse:
         from .ai.agent import analyze_part
         from .ai.tools import AgentContext
+        _ai_cost_guard(request.client.host if request.client else "unknown", authorization)
         try:
             p = json.loads(params) if params else {}
         except json.JSONDecodeError as exc:

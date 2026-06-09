@@ -96,3 +96,25 @@ def test_ai_session_persistence(client):
     got = client.get("/api/ai/session/ai_x").json()
     assert got["messages"][0]["content"] == "hi"
     assert client.get("/api/ai/session/nope").status_code == 404
+
+
+def test_ai_cost_guard_requires_login_when_live(client, monkeypatch):
+    # simulate a live LLM provider → chat must require a login token
+    class _Live:
+        name = "openai"
+        available = True
+    monkeypatch.setattr("cnc.ai.get_provider", lambda: _Live())
+    monkeypatch.delenv("AI_PUBLIC", raising=False)
+    import cnc.api as A
+    A._ai_calls.clear(); A._ai_calls_day.clear()
+    assert client.post("/api/ai/chat", data={"message": "hi", "params": "{}"}).status_code == 401
+    # with admin token it works
+    tok = _token(client)
+    A._ai_calls.clear(); A._ai_calls_day.clear()
+    r = client.post("/api/ai/chat", data={"message": "你好", "params": "{}"},
+                    headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+    # AI_PUBLIC=1 opens it without login
+    monkeypatch.setenv("AI_PUBLIC", "1")
+    A._ai_calls.clear(); A._ai_calls_day.clear()
+    assert client.post("/api/ai/chat", data={"message": "hi", "params": "{}"}).status_code == 200
