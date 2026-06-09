@@ -558,6 +558,13 @@ async function loadAIStatus() {
     el.textContent = s.live ? `已接入 ${s.provider}` : "离线模拟助手（上线接入真实 LLM）";
     el.classList.toggle("live", !!s.live);
   } catch { $("ai-status").textContent = "状态未知"; }
+  try {
+    const t = await (await fetch("/api/ai/tools")).json();
+    const n = (t.tools || []).length;
+    $("ai-foot").innerHTML =
+      `可调用 ${n} 项工具（报价/对比/DFM/改价等）；改价等写操作需管理员审批。<br>` +
+      "⚠ AI 结果仅供参考，重要报价请人工复核；勿在对话中输入敏感信息。";
+  } catch { /* ignore */ }
 }
 
 function appendAIMsg(role, text) {
