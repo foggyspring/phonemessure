@@ -56,3 +56,20 @@ def test_only_offered_tools_are_called():
     t = MockProvider().chat([{"role": "user", "content": "改价到 40"}],
                             [{"name": "get_quote"}])
     assert not any(c.name == "set_price" for c in t.tool_calls)
+
+
+def test_real_adapters_inactive_without_config(monkeypatch):
+    # adapters import cleanly and report unavailable when no key/SDK is configured
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("AI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from cnc.ai.providers_real import AnthropicProvider, OpenAIProvider
+    assert AnthropicProvider().available is False
+    assert OpenAIProvider().available is False
+
+
+def test_get_provider_falls_back_to_mock(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "anthropic")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    from cnc.ai import get_provider
+    assert get_provider().name == "mock"      # no key → graceful fallback
