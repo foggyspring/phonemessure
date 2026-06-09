@@ -162,11 +162,20 @@ def run(n=100, seed=12345):
         try:
             stl=mesh.export(file_type="stl")
             metrics=metrics_from_stl_bytes(stl)
+            tol=rng_case.choice([None,"standard","precision","ultra"])
+            surf=rng_case.choice([None,"standard","fine","mirror"])
+            lt=rng_case.choice([None,"economy","standard","express","rush"])
+            cur=rng_case.choice([None,"CNY","USD","EUR"])
+            addons=rng_case.sample(["material_cert","coc","dim_report","first_article"],
+                                   rng_case.randint(0,2))
+            cmp=rng_case.random()<0.15
             req=QuoteRequest(material=mat,quantity=qty,finish=fin,holes=holes,
                              tight_tolerance=case["tight"],requires_5axis=case["five"],rush=case["rush"],
-                             part_name=cust or name, units=units, customer=cust)
+                             part_name=cust or name, units=units, customer=cust,
+                             tolerance=tol, surface_finish=surf, lead_time=lt,
+                             currency=cur, addons=addons)
             t0=time.time()
-            payload=build_quote(metrics,req,shop,mesh_stl=stl,backend=backend)
+            payload=build_quote(metrics,req,shop,mesh_stl=stl,backend=backend,compare=cmp)
             dt=time.time()-t0
             used=payload["estimator"]["used"]; backends[used]=backends.get(used,0)+1
             check(case,payload,dt,problems)

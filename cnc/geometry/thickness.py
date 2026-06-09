@@ -35,7 +35,7 @@ def _first_hit_distance(o, d, v0, e1, e2, np):
 
 
 def estimate_min_wall_mm(
-    stl_bytes: bytes, *, max_faces: int = 60000, max_samples: int = 700,
+    stl_bytes: bytes, *, max_faces: int = 60000, max_samples: int = 320,
     time_budget_s: float = 2.5, percentile: float = 2.0,
 ) -> float | None:
     try:
