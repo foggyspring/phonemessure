@@ -22,11 +22,12 @@ BACKENDS = ("auto", "analytic", "toolpath")
 
 
 def backend_status() -> dict:
-    from . import freecad_cam
+    from . import freecad_cam, surface_ocl
     return {
         "analytic": True,
         "toolpath": _toolpath.available(),
         "freecad": freecad_cam.available(),
+        "surface_dropcutter": surface_ocl.available(),  # opencamlib refinement
     }
 
 

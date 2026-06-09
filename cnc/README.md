@@ -107,7 +107,7 @@ python -m pytest cnc/tests -q
 | 后端 | 精度 | 依赖 | 做法 |
 |------|------|------|------|
 | `analytic` | ~70%（漏斗粗算） | 无 | 去除体积 ÷ 材料调整后的 MRR（`capp.py`） |
-| `toolpath` | 高 | trimesh + shapely | **复用 CAM 内核**：trimesh 按 Z 分层切片，shapely 同心偏置生成开粗刀路、等高生成精加工壁刀路，刀路长度÷真实进给（`data/cutting.json` 的 feeds/speeds）得节拍 |
+| `toolpath` | 高 | trimesh + shapely（+opencamlib 可选） | **复用 CAM 内核**：trimesh 按 Z 分层切片，shapely 同心偏置生成开粗刀路、等高生成精加工壁刀路；曲面精加工用 **opencamlib 球刀 drop-cutter** 实测真实 3D 刀路斜率/曲率（飞面=1.0，曲面/斜面>1），刀路长度÷真实进给（`data/cutting.json`）得节拍 |
 | `freecad` | 最高（真实刀路） | FreeCAD（conda） | 调 `freecadcmd` 让 **FreeCAD Path/CAM 工作台**自动编程、导出 G 代码，再由 `gcode_time` 积分真实节拍 |
 
 `auto` = 有网格(STL/STEP 镶嵌) 且装了 trimesh/shapely 就用 `toolpath`，否则回退
@@ -162,7 +162,7 @@ conda install -c conda-forge pythonocc-core
   API 自动拉取当日料价、加入支付网关。
 - **大文件**：当前内联解析并限制 ≤60MB；生产应改为 Celery 异步队列。
 - **特征识别**：现为几何信号 + 人工声明；可进一步做真正的孔/型腔/清角自动识别。
-- **工时精度**：✅ 已接入开源 CAM 思路——`toolpath`（trimesh+shapely 刀路仿真）与
-  `freecad`（真实 G 代码）两级高精度后端；下一步可让 `toolpath` 用 opencamlib
-  的 drop-cutter 做自由曲面精加工、并把 feeds/speeds 表细化到「材料×刀具」。
+- **工时精度**：✅ 已接入开源 CAM——`toolpath`（trimesh+shapely 刀路仿真 +
+  opencamlib drop-cutter 曲面精加工）与 `freecad`（真实 G 代码）；下一步可把
+  feeds/speeds 表从「按材料」细化到「材料×刀具直径」，并用真实工时反标定系数。
 - **AI 进阶**：积累报价历史后，用神经网络直接由几何特征预测工时（Xometry 路线）。

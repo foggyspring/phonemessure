@@ -597,7 +597,7 @@ async function loadBackends() {
       if (o.value === "toolpath" && !av.toolpath) { o.disabled = true; o.textContent += "（未安装）"; }
     });
     const tiers = [];
-    if (av.toolpath) tiers.push("刀路仿真");
+    if (av.toolpath) tiers.push(av.surface_dropcutter ? "刀路仿真+曲面drop-cutter" : "刀路仿真");
     if (av.freecad) tiers.push("FreeCAD CAM");
     $("backend-hint").textContent = tiers.length
       ? "可用高精度后端：" + tiers.join(" / ")
@@ -621,7 +621,11 @@ function renderEstimator(p) {
   if (!ops.length) { el.innerHTML = ""; return; }
   const fmt = (o) => {
     if (o.op === "roughing") return `开粗 · Z分层 ${o.levels} 层 · 刀路 ${(o.path_len_mm / 1000).toFixed(2)} m @ ${o.feed_mm_min}mm/min → ${o.minutes}min`;
-    if (o.op === "finishing") return `精加工 · 等高 ${o.levels} 层 · 壁 ${(o.wall_len_mm / 1000).toFixed(2)}m + 光面 ${(o.raster_len_mm / 1000).toFixed(2)}m → ${o.minutes}min`;
+    if (o.op === "finishing") {
+      const surf = o.surface_method === "drop-cutter"
+        ? `曲面(drop-cutter ×${o.surface_factor})` : "光面(光栅)";
+      return `精加工 · 等高 ${o.levels} 层 · 壁 ${(o.wall_len_mm / 1000).toFixed(2)}m + ${surf} ${(o.raster_len_mm / 1000).toFixed(2)}m → ${o.minutes}min`;
+    }
     if (o.op === "drilling") return `钻孔 ${o.holes} 个（螺纹 ${o.threaded}）· 总深 ${o.total_depth_mm}mm → 钻 ${o.drill_minutes} / 攻 ${o.tap_minutes}min`;
     return JSON.stringify(o);
   };

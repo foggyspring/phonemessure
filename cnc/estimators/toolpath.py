@@ -174,14 +174,29 @@ def _simulate_finishing(mesh, bounds, cut, tools) -> tuple[float, dict]:
         wall_len += part.length
         footprint_area = max(footprint_area, part.area)
 
-    # Parallel raster over the top footprint (flat/shallow top surfaces).
-    raster_len = footprint_area / stepover if stepover > 0 else 0.0
+    # Parallel raster over the top footprint (flat projection), then inflate by
+    # the real surface slope/curvature measured with opencamlib drop-cutter.
+    raster_flat = footprint_area / stepover if stepover > 0 else 0.0
+    factor, surf_info = 1.0, {"method": "flat"}
+    try:
+        from . import surface_ocl
+        if surface_ocl.available():
+            factor, surf_info = surface_ocl.curvature_factor(
+                mesh, tools["finish_endmill_d_mm"], stepover
+            )
+    except Exception as exc:  # never let surfacing break a quote
+        surf_info = {"method": "flat", "reason": f"{exc.__class__.__name__}"}
+    surface_len = raster_flat * factor
 
-    minutes = (wall_len + raster_len) / feed
+    minutes = (wall_len + surface_len) / feed
     detail = {
-        "op": "finishing", "strategy": "waterline walls + parallel raster",
+        "op": "finishing",
+        "strategy": "waterline walls + drop-cutter surface"
+                    if surf_info.get("method") == "drop-cutter"
+                    else "waterline walls + parallel raster",
         "levels": n, "wall_len_mm": round(wall_len, 1),
-        "raster_len_mm": round(raster_len, 1), "feed_mm_min": feed,
+        "raster_len_mm": round(surface_len, 1), "surface_factor": round(factor, 3),
+        "surface_method": surf_info.get("method"), "feed_mm_min": feed,
         "minutes": round(minutes, 2),
     }
     return minutes, detail

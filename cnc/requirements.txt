@@ -18,7 +18,7 @@ reportlab>=4.2
 #   networkx>=3.0
 #   opencamlib        # optional, C++ ext; surface drop-cutter
 #
-# pip install trimesh shapely scipy networkx
+# pip install trimesh shapely scipy networkx opencamlib
 
 # --- Optional: tier-1 CAM via FreeCAD ------------------------------------
 # The "freecad" backend shells out to freecadcmd to generate real G-code and
