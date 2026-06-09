@@ -448,6 +448,9 @@ function renderResult(p, isLive) {
     ["复杂度 Complexity", (g.complexity * 100).toFixed(0) + " %"],
     ...(g.min_wall_mm != null ? [["最小壁厚 Min wall",
         `${g.min_wall_mm.toFixed(2)} mm${g.min_wall_auto ? ' <span class="muted tiny">(自动检测)</span>' : ""}`]] : []),
+    ...(g.holes_auto && g.holes_detected && g.holes_detected.length ? [["识别孔 Holes",
+        g.holes_detected.map((h) => `${h.count}×Ø${h.diameter_mm}${h.through ? "通" : "盲"}`).join("、") +
+        ' <span class="muted tiny">(自动识别)</span>']] : []),
     ["三角面 Triangles", g.triangles || "—"],
   ]);
 

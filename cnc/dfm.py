@@ -31,11 +31,18 @@ def analyze_dfm(
     requires_5axis: bool = False,
     max_part_mm: float | None = None,
     wall_auto: bool = False,
+    holes_auto: bool = False,
 ) -> list[dict]:
     out: list[dict] = []
     dims = sorted(metrics.dims_mm)
     longest, shortest = dims[2], dims[0]
     auto = "（自动检测 auto）" if wall_auto else ""
+
+    if holes_auto and feat.holes:
+        n = sum(h.count for h in feat.holes)
+        out.append(_f("info", "holes_auto", "自动识别孔 Auto-detected holes",
+                      f"从模型识别到 {n} 个孔（{len(feat.holes)} 种规格），用于钻孔工时与提示。",
+                      "请核对孔数/孔径，并补充螺纹要求（无法从网格判断）。"))
 
     # ---- slender / whippy part ----
     if shortest > 0:

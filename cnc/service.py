@@ -122,9 +122,23 @@ def build_quote(
         auto_wall = round(raw * unit_scale, 3) if raw is not None else None
         min_wall = auto_wall
 
+    # Holes: use declared, else auto-recognise cylindrical bores from the mesh
+    # so drilling cost + deep/small-hole DFM work without a manual declaration.
+    holes = req.holes
+    holes_auto = False
+    detected_holes: list[dict] = []
+    if not holes and mesh_stl is not None:
+        from .geometry.holes import detect_holes
+        detected_holes = detect_holes(mesh_stl)
+        if detected_holes:
+            holes = [Hole(diameter_mm=h["diameter_mm"] * unit_scale,
+                          depth_mm=h["depth_mm"] * unit_scale,
+                          count=h["count"], threaded=False) for h in detected_holes]
+            holes_auto = True
+
     feat = analyze(
         metrics,
-        holes=req.holes,
+        holes=holes,
         tight_tolerance=req.tight_tolerance,
         requires_5axis=req.requires_5axis,
         min_wall_mm=min_wall,
@@ -208,12 +222,17 @@ def build_quote(
             "stock_weight_g": round(plan.stock_volume_cm3 * material.density_g_cm3, 1),
             "min_wall_mm": round(min_wall, 3) if min_wall is not None else None,
             "min_wall_auto": auto_wall is not None,
+            "holes_auto": holes_auto,
+            "holes_detected": [
+                {**h, "diameter_mm": round(h["diameter_mm"] * unit_scale, 2),
+                 "depth_mm": round(h["depth_mm"] * unit_scale, 2)} for h in detected_holes
+            ],
         },
         "plan": plan_d,
         "quote": quote.to_dict(),
         "warnings": feat.warnings,
         "dfm": analyze_dfm(metrics, feat, tight_tolerance=req.tight_tolerance,
                            requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
-                           wall_auto=auto_wall is not None),
+                           wall_auto=auto_wall is not None, holes_auto=holes_auto),
         "estimator": backend_info,
     }
