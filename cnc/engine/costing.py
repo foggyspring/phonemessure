@@ -179,6 +179,15 @@ def price(
     area_dm2 = plan.part_area_cm2 / 100.0
     finish_var_cny = finish.per_dm2_cny * area_dm2
 
+    # Deburring / edge-break: a standard post-process every machined METAL part
+    # needs (industry ~¥15-40/part). Scales a little with surface area; plastics
+    # are typically just snapped/sanded so they get a token amount or none.
+    deburr_cny = 0.0
+    if material.category == "metal":
+        deburr_cny = float(biz.get("deburr_base_cny", 8.0)) + float(biz.get("deburr_per_dm2_cny", 4.0)) * area_dm2
+        notes.append(f"去毛刺/倒角 Deburring ¥{deburr_cny:.1f}/件")
+    addon_per_part += deburr_cny
+
     # One-time batch cost (programming + first article); constant per order.
     programming_cny = (plan.one_time_min / 60.0) * plan.machine.rate_cny_per_hour
     finish_setup_cny = finish.setup_cny
