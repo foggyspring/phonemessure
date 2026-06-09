@@ -86,3 +86,13 @@ def test_approve_validates_value(client):
         "tool": "set_price",
         "arguments": {"kind": "material", "key": "AL6061", "field": "price_cny_per_kg", "value": -5}})
     assert r.json()["ok"] is False and r.json()["error"] == "out_of_range"
+
+
+def test_ai_session_persistence(client):
+    r = client.post("/api/ai/session", json={"id": "ai_x", "title": "t",
+                                             "messages": [{"role": "user", "content": "hi"}]})
+    assert r.json()["ok"]
+    assert any(s["id"] == "ai_x" for s in client.get("/api/ai/sessions").json()["sessions"])
+    got = client.get("/api/ai/session/ai_x").json()
+    assert got["messages"][0]["content"] == "hi"
+    assert client.get("/api/ai/session/nope").status_code == 404

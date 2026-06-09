@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS settings (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ai_sessions (
+    id          TEXT PRIMARY KEY,
+    created_at  TEXT NOT NULL,
+    title       TEXT,
+    messages    TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS calibration_samples (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at    TEXT NOT NULL,
@@ -223,6 +229,33 @@ def calibration_samples(*, path: str | os.PathLike | None = None) -> list[dict]:
             "SELECT material, backend, estimated_min, actual_min FROM calibration_samples"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def save_ai_session(session_id: str, messages: list, title: str = "",
+                    *, path: str | os.PathLike | None = None) -> None:
+    import json as _json
+    with _connect(path) as conn:
+        conn.execute("INSERT OR REPLACE INTO ai_sessions (id, created_at, title, messages) "
+                     "VALUES (?,?,?,?)", (session_id, _now(), title, _json.dumps(messages, ensure_ascii=False)))
+
+
+def list_ai_sessions(*, limit: int = 30, path: str | os.PathLike | None = None) -> list[dict]:
+    with _connect(path) as conn:
+        rows = conn.execute("SELECT id, created_at, title FROM ai_sessions "
+                            "ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_ai_session(session_id: str, *, path: str | os.PathLike | None = None) -> dict | None:
+    import json as _json
+    with _connect(path) as conn:
+        row = conn.execute("SELECT id, created_at, title, messages FROM ai_sessions WHERE id=?",
+                           (session_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["messages"] = _json.loads(d["messages"])
+    return d
 
 
 def time_factors(*, path: str | os.PathLike | None = None) -> dict:

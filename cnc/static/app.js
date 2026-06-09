@@ -546,7 +546,7 @@ function renderResult(p, isLive) {
 }
 
 // ───────────────────────── AI copilot ─────────────────────────
-const aiState = { history: [], busy: false };
+const aiState = { history: [], busy: false, sid: null };
 
 function openAIPanel() { $("ai-panel").classList.remove("hidden"); $("ai-text").focus(); }
 function closeAIPanel() { $("ai-panel").classList.add("hidden"); }
@@ -597,6 +597,7 @@ async function sendAI() {
     if (d.reply) appendAIMsg("bot", d.reply);
     if (d.pending) renderAIPending(d.pending);
     aiState.history = d.history || aiState.history;
+    saveAISession();
   } catch (e) {
     typing.remove(); appendAIMsg("bot", "网络错误：" + e.message);
   } finally { aiState.busy = false; }
@@ -691,11 +692,28 @@ async function aiAnalyze() {
   } catch (e) { typing.remove(); appendAIMsg("bot", "分析失败：" + e.message); }
 }
 
+function newChat() {
+  aiState.history = []; aiState.sid = null;
+  $("ai-messages").innerHTML = '<div class="ai-msg ai-bot">已开始新对话。试试“分析这个零件”或“SUS304 50件多少钱”。</div>';
+}
+
+async function saveAISession() {
+  try {
+    if (!aiState.sid) aiState.sid = "ai_" + Date.now().toString(36);
+    const title = (aiState.history.find((m) => m.role === "user")?.content || "对话").slice(0, 40);
+    await fetch("/api/ai/session", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: aiState.sid, title, messages: aiState.history }),
+    });
+  } catch { /* best-effort */ }
+}
+
 function initAI() {
   $("ai-fab").addEventListener("click", openAIPanel);
   $("ai-analyze-btn").addEventListener("click", aiAnalyze);
   $("ask-why-btn").addEventListener("click", () => { $("ai-text").value = "为什么是这个价格？"; openAIPanel(); sendAI(); });
   $("ai-close").addEventListener("click", closeAIPanel);
+  $("ai-new").addEventListener("click", newChat);
   $("ai-send").addEventListener("click", sendAI);
   $("ai-text").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAI(); }

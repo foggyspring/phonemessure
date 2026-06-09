@@ -278,6 +278,27 @@ def build_app() -> FastAPI:
         from .ai.tools import tool_schemas
         return {"tools": tool_schemas(is_admin=True)}
 
+    @app.post("/api/ai/session")
+    def ai_save_session(body: dict) -> dict:
+        sid = str(body.get("id") or "")
+        msgs = body.get("messages")
+        if not sid or not isinstance(msgs, list):
+            raise HTTPException(status_code=400, detail="id and messages[] required")
+        title = str(body.get("title", ""))[:80]
+        store.save_ai_session(sid, msgs[-_AI_HISTORY_MAX:], title)
+        return {"ok": True, "id": sid}
+
+    @app.get("/api/ai/sessions")
+    def ai_sessions() -> dict:
+        return {"sessions": store.list_ai_sessions()}
+
+    @app.get("/api/ai/session/{sid}")
+    def ai_get_session(sid: str) -> dict:
+        s = store.get_ai_session(sid)
+        if s is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        return s
+
     @app.post("/api/ai/analyze")
     async def ai_analyze(
         params: str = Form("{}"),
