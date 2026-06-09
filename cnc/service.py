@@ -144,6 +144,15 @@ def build_quote(
         min_wall_mm=min_wall,
     )
 
+    # Mesh-derived fixturing setups + undercut fraction (refines the bbox guess).
+    if mesh_stl is not None:
+        from .geometry.setups import analyze_setups, estimate_setups_3axis
+        si = analyze_setups(mesh_stl)
+        if si:
+            feat.setup_dirs = si["setup_dirs"]
+            feat.setup_count = estimate_setups_3axis(si)
+            feat.undercut_frac = si["undercut_frac"]
+
     # Suspiciously tiny part — likely an inch drawing read as mm.
     if max_dim < 3.0:
         feat.warnings.insert(0, f"零件最大尺寸仅 {max_dim:.2f}mm，疑似单位有误（英寸图纸？），请确认单位。")

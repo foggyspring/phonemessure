@@ -90,6 +90,12 @@ def analyze_dfm(
                           f"Ø{d:g} 螺纹孔攻丝易断丝。",
                           "确认螺距，必要时改螺纹铣。"))
 
+    # ---- undercut / faces unreachable from ±axis (3-axis can't reach) ----
+    if not requires_5axis and feat.undercut_frac > 0.2:
+        out.append(_f("medium", "undercut", "可能存在倒扣 Undercut",
+                      f"约 {feat.undercut_frac*100:.0f}% 面不朝向任一主轴向，三轴难达。",
+                      "考虑五轴/电极，或拆分零件、增加工序。"))
+
     # ---- freeform / multi-axis ----
     if metrics.complexity > 0.7 or requires_5axis:
         out.append(_f("info", "multi_axis", "多轴/自由曲面 Multi-axis",

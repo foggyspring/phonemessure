@@ -91,6 +91,9 @@ def _estimate_setups(feat: FeatureSet, machine: Machine) -> int:
     """
     if machine.max_axes >= 5:
         return 2 if feat.metrics.complexity > 0.6 else 1
+    # Prefer the mesh-derived count (faces featured per direction) when present.
+    if feat.setup_count is not None:
+        return feat.setup_count
     dims = sorted(feat.metrics.dims_mm)
     plate_like = dims[0] > 0 and dims[2] / dims[0] > 4.0  # thin -> likely 1-2 setups
     setups = 2
