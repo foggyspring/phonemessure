@@ -63,6 +63,7 @@
     "rush_factor": 1.4,
     "rush_lead_days": 3,
     "standard_lead_days": 10,
+    "daily_capacity_hours": 16,
     "lead_time_tiers": [
       {
         "key": "economy",

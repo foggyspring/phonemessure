@@ -236,9 +236,21 @@ def price(
     # Procurement: non-stocked materials (titanium / 316 …) wait for stock before
     # machining can even start, so add their lead to every delivery option.
     procure_days = int(getattr(material, "stock_lead_days", 0) or 0)
-    lead_days = int(sel["days"]) + procure_days
+    # Capacity: a large order can't physically ship within the tier window —
+    # 1000 parts × 40min ≈ 667 machine-hours. Floor the lead at the machining
+    # days implied by total cycle time ÷ daily capacity (maintainable).
+    import math as _math
+    capacity_h = float(biz.get("daily_capacity_hours", 16) or 16)
+    machining_days = _math.ceil(plan.times.per_part_min * rq / 60.0 / capacity_h) if capacity_h > 0 else 0
+
+    def _lead_for(tier_days: int) -> int:
+        return max(int(tier_days), machining_days) + procure_days
+
+    lead_days = _lead_for(int(sel["days"]))
     if procure_days:
         notes.append(f"{material.label} 非常备料，备料 +{procure_days} 天")
+    if machining_days > int(sel["days"]):
+        notes.append(f"大批量按产能排产，加工约 {machining_days} 天（{capacity_h:g}h/天）")
     if lead_factor != 1.0:
         notes.append(f"{sel['label']} {lead_days} 天交付：交期系数 ×{lead_factor}")
 
@@ -263,7 +275,7 @@ def price(
     lead_time_options = []
     for t in tier_cfg:
         u = make(rq, float(t["factor"])).unit_price_cny
-        days = int(t["days"]) + procure_days
+        days = _lead_for(int(t["days"]))
         lead_time_options.append({
             "key": t["key"], "label": t["label"], "days": days,
             "delivery_date": (_date.today() + _td(days=days)).isoformat(),

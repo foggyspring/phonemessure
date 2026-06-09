@@ -142,6 +142,7 @@ _BUSINESS_OVERRIDABLE = {
     "margin", "tax_rate", "tight_tolerance_margin_bonus", "rush_factor",
     "deburr_base_cny", "deburr_per_dm2_cny", "packaging_cny",
     "shipping_cny_per_kg", "min_order_cny", "quote_valid_days",
+    "daily_capacity_hours",
 }
 # Nested array params, addressed as "<array>.<key>.<sub>" (e.g.
 # "lead_time_tiers.express.factor"). {array: {editable sub-fields}}.

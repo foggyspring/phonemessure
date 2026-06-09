@@ -209,6 +209,15 @@ def test_suspicious_tiny_part_warns_units():
     assert any("单位" in w for w in q["warnings"])
 
 
+def test_large_order_lead_time_extends_with_capacity():
+    m = _metrics()
+    small = build_quote(m, QuoteRequest(material="AL6061", quantity=1))["quote"]
+    huge = build_quote(m, QuoteRequest(material="AL6061", quantity=1000))["quote"]
+    assert huge["lead_days"] > small["lead_days"]      # can't ship 1000 in the tier window
+    # every delivery option is floored by machining capacity too
+    assert all(o["days"] >= small["lead_days"] for o in huge["lead_time_options"])
+
+
 def test_min_order_floor_tops_up_small_orders():
     # a cheap single plastic part falls below the ¥200 minimum order
     small = build_quote(metrics_from_stl_bytes(cube_stl(20.0)),
