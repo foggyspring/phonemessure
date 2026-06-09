@@ -239,3 +239,16 @@ def test_currency_fx_block():
     usd = build_quote(m, QuoteRequest(material="AL6061", quantity=5, currency="USD"))["fx"]
     assert cny["rate"] == 1.0 and cny["symbol"] == "¥" and not cny["indicative"]
     assert usd["currency"] == "USD" and 0 < usd["rate"] < 1 and usd["indicative"]
+
+
+def test_confidence_score_present_and_ranked():
+    import trimesh
+    from cnc.geometry import metrics_from_stl_bytes
+    cb = cube_stl(50.0)
+    simple = build_quote(metrics_from_stl_bytes(cb), QuoteRequest(material="AL6061", quantity=1),
+                         mesh_stl=cb, backend="toolpath")["confidence"]
+    sb = trimesh.creation.icosphere(subdivisions=3, radius=25).export(file_type="stl")
+    hard = build_quote(metrics_from_stl_bytes(sb), QuoteRequest(material="AL6061", quantity=1),
+                       mesh_stl=sb, backend="analytic")["confidence"]
+    assert 30 <= hard["score"] <= simple["score"] <= 98
+    assert simple["level"] in ("high", "medium") and hard["reasons"]

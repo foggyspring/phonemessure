@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from . import estimators
 from .calibration import factor_for
+from .confidence import score_quote
 from .dfm import analyze_dfm
 from .suggest import suggest_materials
 
@@ -282,5 +283,10 @@ def build_quote(
                            wall_auto=auto_wall is not None, holes_auto=holes_auto),
         "material_suggestions": suggest_materials(feat, material, finish, shop, req.quantity),
         "fx": _resolve_fx(shop, req.currency),
+        "confidence": score_quote(
+            backend=backend_info.get("used", ""), complexity=metrics.complexity,
+            holes_auto=holes_auto, wall_auto=auto_wall is not None,
+            undercut_frac=feat.undercut_frac, near_envelope=bool(max_part and max_dim > 0.8 * max_part),
+            has_mesh=mesh_stl is not None, calibration_n=cal_n),
         "estimator": backend_info,
     }
