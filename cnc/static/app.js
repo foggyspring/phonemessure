@@ -13,6 +13,8 @@ const state = {
   bbox: null,
   hasQuoted: false,
   lastPrice: 0,
+  token: null,
+  user: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -547,8 +549,77 @@ async function downloadPdf() {
   } finally { btn.classList.remove("loading"); }
 }
 
+// ───────────────────────── auth ─────────────────────────
+function authHeaders(extra) {
+  const h = extra ? { ...extra } : {};
+  if (state.token) h["Authorization"] = "Bearer " + state.token;
+  return h;
+}
+
+function setAuthUI() {
+  const chip = $("user-chip"), logout = $("logout-btn");
+  if (state.user) {
+    chip.textContent = "👤 " + state.user;
+    chip.classList.remove("hidden");
+    logout.classList.remove("hidden");
+  } else {
+    chip.classList.add("hidden");
+    logout.classList.add("hidden");
+  }
+}
+
+async function loadMe() {
+  state.token = localStorage.getItem("cnc_token") || null;
+  if (!state.token) { state.user = null; setAuthUI(); return; }
+  try {
+    const r = await fetch("/api/me", { headers: authHeaders() });
+    if (r.ok) { state.user = (await r.json()).username; }
+    else { state.token = null; localStorage.removeItem("cnc_token"); state.user = null; }
+  } catch { state.user = null; }
+  setAuthUI();
+}
+
+function openLogin() {
+  $("login-error").classList.add("hidden");
+  $("login-pass").value = "";
+  $("login-modal").classList.remove("hidden");
+  $("login-pass").focus();
+}
+function closeLogin() { $("login-modal").classList.add("hidden"); }
+
+async function doLogin() {
+  const username = $("login-user").value.trim();
+  const password = $("login-pass").value;
+  const btn = $("login-submit"); btn.classList.add("loading");
+  try {
+    const r = await fetch("/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!r.ok) {
+      const d = (await r.json().catch(() => ({}))).detail || "登录失败";
+      const e = $("login-error"); e.textContent = d; e.classList.remove("hidden");
+      return;
+    }
+    const data = await r.json();
+    state.token = data.token; state.user = data.username;
+    localStorage.setItem("cnc_token", data.token);
+    setAuthUI(); closeLogin(); toast("已登录 " + data.username, "ok");
+    openAdmin();   // continue to the panel they were after
+  } catch (e) {
+    toast("网络错误：" + e.message, "err");
+  } finally { btn.classList.remove("loading"); }
+}
+
+function logout() {
+  state.token = null; state.user = null;
+  localStorage.removeItem("cnc_token");
+  setAuthUI(); toast("已退出", "info");
+}
+
 // ───────────────────────── admin price modal ─────────────────────────
 function openAdmin() {
+  if (!state.token) { openLogin(); return; }
   if (!state.shop) return;
   const mg = $("admin-materials"); mg.innerHTML = "";
   for (const [k, m] of Object.entries(state.shop.materials)) {
@@ -576,10 +647,14 @@ async function saveAdmin() {
   $("admin-save").classList.add("loading");
   try {
     for (const i of changed) {
-      await fetch("/api/admin/price", {
-        method: "PUT", headers: { "Content-Type": "application/json" },
+      const r = await fetch("/api/admin/price", {
+        method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ kind: i.dataset.kind, key: i.dataset.key, field: i.dataset.field, value: parseFloat(i.value) }),
       });
+      if (r.status === 401 || r.status === 403) {
+        closeAdmin(); logout(); toast("登录已过期，请重新登录", "err"); openLogin();
+        return;
+      }
     }
     await loadShop();
     closeAdmin();
@@ -687,6 +762,7 @@ function main() {
   loadHealth();
   loadHistory();
   loadBackends();
+  loadMe();
 
   $("add-hole").addEventListener("click", () => addHoleRow());
   $("quote-btn").addEventListener("click", () => requestQuote(true));
@@ -696,6 +772,11 @@ function main() {
   $("admin-close").addEventListener("click", closeAdmin);
   $("admin-save").addEventListener("click", saveAdmin);
   $("admin-modal").addEventListener("click", (e) => { if (e.target.id === "admin-modal") closeAdmin(); });
+  $("logout-btn").addEventListener("click", logout);
+  $("login-close").addEventListener("click", closeLogin);
+  $("login-submit").addEventListener("click", doLogin);
+  $("login-modal").addEventListener("click", (e) => { if (e.target.id === "login-modal") closeLogin(); });
+  $("login-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
 
   // Live re-quote on any parameter change (once a first quote exists).
   ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "rush", "backend", "units", "customer"].forEach((id) =>

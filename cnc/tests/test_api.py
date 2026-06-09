@@ -65,10 +65,11 @@ def test_pdf_endpoint_rejects_junk_400():
     assert client.post("/api/quote/pdf", json={"foo": "bar"}).status_code == 400
 
 
-def test_admin_unknown_key_404():
+def test_admin_price_requires_auth_401():
+    # unauthenticated -> 401 before any body validation (auth gate runs first)
     r = client.put("/api/admin/price",
                    json={"kind": "material", "key": "NOPE", "field": "price_cny_per_kg", "value": 5})
-    assert r.status_code == 404
+    assert r.status_code == 401
 
 
 def test_missing_quote_404():

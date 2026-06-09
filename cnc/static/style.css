@@ -58,6 +58,11 @@ h2, h3 { letter-spacing: .2px; }
 .health .dot.pending { background: var(--muted2); animation: pulse 1.2s infinite; }
 @keyframes pulse { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
 
+.user-chip {
+  font-size: 12px; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--border2); padding: 5px 11px; border-radius: 20px;
+}
+.modal.modal-sm { width: min(380px, 100%); }
 .ghost-btn {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border2);
   border-radius: var(--radius-sm); padding: 7px 13px; cursor: pointer; font-size: 13px;

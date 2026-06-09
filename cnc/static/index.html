@@ -26,7 +26,9 @@
     </div>
     <div class="top-actions">
       <div class="health" id="health"><span class="dot pending"></span> 连接中…</div>
+      <span class="user-chip hidden" id="user-chip"></span>
       <button id="admin-btn" class="ghost-btn" title="维护材料单价 / 机床时租">⚙ 价格维护</button>
+      <button id="logout-btn" class="ghost-btn hidden" title="退出登录">退出</button>
     </div>
   </header>
 
@@ -212,6 +214,27 @@
       <div id="admin-machines" class="admin-grid"></div>
       <div class="modal-foot">
         <button id="admin-save" class="primary small">保存并刷新报价</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────── Login modal ───────── -->
+  <div id="login-modal" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <div class="modal-head">
+        <h2>登录 Sign in</h2>
+        <button id="login-close" class="icon-btn">✕</button>
+      </div>
+      <p class="muted tiny">价格维护需要管理员权限。</p>
+      <label>用户名 Username
+        <input id="login-user" type="text" autocomplete="username" value="admin" />
+      </label>
+      <label>密码 Password
+        <input id="login-pass" type="password" autocomplete="current-password" />
+      </label>
+      <div id="login-error" class="error hidden"></div>
+      <div class="modal-foot">
+        <button id="login-submit" class="primary small">登录</button>
       </div>
     </div>
   </div>

@@ -130,6 +130,32 @@ CAM 的核心算法）和 trimesh 的网格切片，不重造轮子。每一项�
 
 ---
 
+## 鉴权 Authentication
+
+价格维护类接口（`PUT /api/admin/price`、`GET /api/admin/overrides`）需要管理员
+登录；其余报价/查询接口公开。实现为纯标准库（无 bcrypt/jwt 依赖）：
+
+- 密码 PBKDF2-HMAC-SHA256（随机盐、20万次迭代），常量时间比对。
+- 会话为 HMAC 签名的无状态令牌 `{用户名, 角色, 过期}`，有效期 8 小时。
+- 登录按客户端 IP 限流（60 秒内 8 次失败触发 429），缓解暴力破解。
+
+环境变量：
+
+```bash
+CNC_ADMIN_USER=admin            # 默认 admin
+CNC_ADMIN_PASSWORD=<强密码>      # 未设则首次播种 admin/admin 并打印告警
+CNC_SECRET=<令牌签名密钥>         # 未设则生成并持久化到 DB（重启后令牌仍有效）
+```
+
+接口：`POST /api/login {username,password}` → `{token,role,expires_in}`；
+`GET /api/me`（带 `Authorization: Bearer <token>`）→ 当前用户；管理接口需带同样的
+Bearer 头。前端有登录弹窗，令牌存 localStorage，过期/失效自动重新登录。
+
+> ⚠️ 令牌经请求头明文传输——**生产务必置于 HTTPS/反向代理之后**。多 worker 部署时
+> 登录限流需换成 Redis（当前为单进程内存）。
+
+---
+
 ## 持久化与价格维护 Persistence & price admin（第三阶段）
 
 - 每次报价自动存入 SQLite（`cnc/store.py`），前端「最近报价」面板可点开重看或重下 PDF。

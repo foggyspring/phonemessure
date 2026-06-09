@@ -16,13 +16,16 @@ Celery worker instead of doing it inline.
 from __future__ import annotations
 
 import json
+import os
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import store
+from . import auth, store
 from .engine import ShopData, apply_overrides, load
 from .geometry import GeometryError, MeshMetrics
 from .geometry.parser import (
@@ -40,6 +43,54 @@ MAX_UPLOAD_BYTES = 60 * 1024 * 1024  # 60 MB — reject monster assemblies early
 def _effective_shop() -> ShopData:
     """Base reference data with any runtime price/rate overrides applied."""
     return apply_overrides(load(), store.get_overrides())
+
+
+def _seed_admin() -> None:
+    """Ensure one admin user exists; password from env or an insecure default."""
+    try:
+        if store.count_users() > 0:
+            return
+        user = os.environ.get("CNC_ADMIN_USER", "admin")
+        pw = os.environ.get("CNC_ADMIN_PASSWORD")
+        if not pw:
+            pw = "admin"
+            print("  ⚠ CNC_ADMIN_PASSWORD not set — seeding admin/admin; "
+                  "set it (and change the password) before exposing this.", flush=True)
+        store.create_user(user, auth.hash_password(pw), role="admin")
+    except Exception as exc:  # never block startup on seeding
+        print(f"  auth seed skipped: {exc}", flush=True)
+
+
+# Simple in-memory login throttle (per client IP) to blunt brute-forcing.
+# Single-process; for multi-worker deployments back this with Redis.
+_LOGIN_MAX_FAILS = 8
+_LOGIN_WINDOW_S = 60
+_login_fails: dict[str, deque] = defaultdict(deque)
+
+
+def _login_throttled(ip: str) -> bool:
+    dq = _login_fails[ip]
+    now = time.time()
+    while dq and now - dq[0] > _LOGIN_WINDOW_S:
+        dq.popleft()
+    return len(dq) >= _LOGIN_MAX_FAILS
+
+
+def _record_login_fail(ip: str) -> None:
+    _login_fails[ip].append(time.time())
+
+
+def require_admin(authorization: str | None = Header(default=None)) -> dict:
+    """FastAPI dependency: require a valid admin bearer token."""
+    token = auth.bearer_from_header(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="authentication required")
+    payload = auth.verify_token(store.get_secret(), token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="invalid or expired token")
+    if payload.get("r") != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+    return payload
 
 
 def _metrics_payload(m: MeshMetrics) -> dict:
@@ -235,11 +286,36 @@ def build_app() -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{name}_{quote_id}.pdf"'},
         )
 
+    @app.post("/api/login")
+    def login(body: dict, request: Request) -> dict:
+        ip = request.client.host if request.client else "unknown"
+        if _login_throttled(ip):
+            raise HTTPException(status_code=429, detail="尝试过于频繁，请稍后再试 too many attempts")
+        username = str(body.get("username", ""))
+        password = str(body.get("password", ""))
+        u = store.get_user(username)
+        if not u or not auth.verify_password(password, u["pw_hash"]):
+            _record_login_fail(ip)
+            raise HTTPException(status_code=401, detail="用户名或密码错误 invalid credentials")
+        _login_fails.pop(ip, None)   # reset on success
+        ttl = 8 * 3600
+        token = auth.make_token(store.get_secret(), username, u["role"], ttl)
+        return {"token": token, "username": username, "role": u["role"], "expires_in": ttl}
+
+    @app.get("/api/me")
+    def me(authorization: str | None = Header(default=None)) -> dict:
+        token = auth.bearer_from_header(authorization)
+        payload = auth.verify_token(store.get_secret(), token) if token else None
+        if not payload:
+            raise HTTPException(status_code=401, detail="not authenticated")
+        return {"username": payload["u"], "role": payload["r"], "exp": payload["exp"]}
+
     @app.put("/api/admin/price")
-    def set_price(body: dict) -> dict:
+    def set_price(body: dict, _admin: dict = Depends(require_admin)) -> dict:
         """Maintain 当日市场克单价 / 机床时租 at runtime (the brief's admin panel).
 
         body = {"kind": "material"|"machine", "key": str, "field": str, "value": number}
+        Requires an admin bearer token.
         """
         try:
             kind = str(body["kind"])
@@ -263,7 +339,7 @@ def build_app() -> FastAPI:
         return {"ok": True, "kind": kind, "key": key, "field": field, "value": value}
 
     @app.get("/api/admin/overrides")
-    def overrides() -> dict:
+    def overrides(_admin: dict = Depends(require_admin)) -> dict:
         return store.get_overrides()
 
     @app.get("/", response_class=HTMLResponse)
@@ -276,6 +352,7 @@ def build_app() -> FastAPI:
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    _seed_admin()
     return app
 
 

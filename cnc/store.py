@@ -40,6 +40,16 @@ CREATE TABLE IF NOT EXISTS price_overrides (
     updated_at  TEXT NOT NULL,
     PRIMARY KEY (kind, key, field)
 );
+CREATE TABLE IF NOT EXISTS users (
+    username    TEXT PRIMARY KEY,
+    pw_hash     TEXT NOT NULL,
+    role        TEXT NOT NULL DEFAULT 'admin',
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL
+);
 """
 
 
@@ -140,3 +150,44 @@ def get_overrides(*, path: str | os.PathLike | None = None) -> dict:
 def clear_overrides(*, path: str | os.PathLike | None = None) -> None:
     with _connect(path) as conn:
         conn.execute("DELETE FROM price_overrides")
+
+
+# ----------------------------------------------------------- auth / users --
+import secrets as _secrets
+
+
+def get_secret(*, path: str | os.PathLike | None = None) -> str:
+    """Token-signing secret: $CNC_SECRET, else a generated value persisted once."""
+    env = os.environ.get("CNC_SECRET")
+    if env:
+        return env
+    with _connect(path) as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key='secret'").fetchone()
+        if row:
+            return row["value"]
+        val = _secrets.token_hex(32)
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('secret', ?)", (val,))
+        return val
+
+
+def create_user(username: str, pw_hash: str, role: str = "admin",
+                *, path: str | os.PathLike | None = None) -> None:
+    with _connect(path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO users (username, pw_hash, role, created_at) "
+            "VALUES (?,?,?,?)",
+            (username, pw_hash, role, _now()),
+        )
+
+
+def get_user(username: str, *, path: str | os.PathLike | None = None) -> dict | None:
+    with _connect(path) as conn:
+        row = conn.execute(
+            "SELECT username, pw_hash, role FROM users WHERE username=?", (username,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def count_users(*, path: str | os.PathLike | None = None) -> int:
+    with _connect(path) as conn:
+        return conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
