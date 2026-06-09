@@ -225,7 +225,12 @@ def price(
     sel = next((t for t in tier_cfg if t["key"] == sel_key), None) \
         or next((t for t in tier_cfg if t["key"] == default_key), tier_cfg[0])
     lead_factor = float(sel["factor"])
-    lead_days = int(sel["days"])
+    # Procurement: non-stocked materials (titanium / 316 …) wait for stock before
+    # machining can even start, so add their lead to every delivery option.
+    procure_days = int(getattr(material, "stock_lead_days", 0) or 0)
+    lead_days = int(sel["days"]) + procure_days
+    if procure_days:
+        notes.append(f"{material.label} 非常备料，备料 +{procure_days} 天")
     if lead_factor != 1.0:
         notes.append(f"{sel['label']} {lead_days} 天交付：交期系数 ×{lead_factor}")
 
@@ -250,9 +255,10 @@ def price(
     lead_time_options = []
     for t in tier_cfg:
         u = make(rq, float(t["factor"])).unit_price_cny
+        days = int(t["days"]) + procure_days
         lead_time_options.append({
-            "key": t["key"], "label": t["label"], "days": int(t["days"]),
-            "delivery_date": (_date.today() + _td(days=int(t["days"]))).isoformat(),
+            "key": t["key"], "label": t["label"], "days": days,
+            "delivery_date": (_date.today() + _td(days=days)).isoformat(),
             "factor": float(t["factor"]), "unit_price_cny": round(u, 2),
             "total_cny": round(u * rq, 2), "selected": t["key"] == sel["key"],
         })

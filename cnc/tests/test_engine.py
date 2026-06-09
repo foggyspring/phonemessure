@@ -209,6 +209,16 @@ def test_suspicious_tiny_part_warns_units():
     assert any("单位" in w for w in q["warnings"])
 
 
+def test_procurement_lead_extends_delivery_for_exotic_material():
+    m = _metrics()
+    al = build_quote(m, QuoteRequest(material="AL6061", quantity=5))["quote"]
+    ti = build_quote(m, QuoteRequest(material="TITANIUM_TC4", quantity=5))["quote"]
+    assert ti["lead_days"] > al["lead_days"]            # titanium not on the shelf
+    assert ti["delivery_date"] > al["delivery_date"]
+    # the procurement wait applies to every delivery option too
+    assert all(o["days"] > 0 for o in ti["lead_time_options"])
+
+
 def test_tax_and_validity_present():
     q = build_quote(metrics_from_stl_bytes(cube_stl(50.0)), QuoteRequest(material="AL6061", quantity=10))
     Q = q["quote"]
