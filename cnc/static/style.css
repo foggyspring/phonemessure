@@ -141,4 +141,16 @@ table.tiers td { border-bottom: 1px solid #1f262e; font-variant-numeric: tabular
 #warn-list { margin: 0; padding-left: 18px; }
 #warn-list li { color: var(--muted); margin-bottom: 6px; font-size: 13px; }
 
+/* ---------- history ---------- */
+.hist-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.hist-head h2 { margin: 0; }
+table.hist { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.hist td { padding: 6px 4px; border-bottom: 1px solid var(--border); }
+table.hist tr { cursor: pointer; }
+table.hist tr:hover td { background: var(--panel2); }
+table.hist .h-price { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+table.hist .h-pdf { text-align: right; }
+table.hist .h-pdf a { color: var(--accent); text-decoration: none; }
+table.hist .h-id { color: var(--muted); font-family: ui-monospace, monospace; }
+
 .foot { text-align: center; color: var(--muted); font-size: 12px; padding: 20px; }

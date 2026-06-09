@@ -35,3 +35,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# CNC quote engine local DB
+*.db
+*.sqlite
+*.sqlite3

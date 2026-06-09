@@ -8,7 +8,7 @@ module so swapping the backing store later touches one file.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -116,3 +116,39 @@ def load(data_dir: str | None = None) -> ShopData:
         capp=mach_raw["capp"],
         business=mach_raw["business"],
     )
+
+
+# Fields an admin/supplier feed is allowed to override at runtime, per kind.
+_OVERRIDE_FIELDS = {
+    "material": {"price_cny_per_kg", "machinability", "density_g_cm3"},
+    "machine": {"rate_cny_per_hour", "base_mrr_cm3_min"},
+}
+
+
+def apply_overrides(shop: ShopData, overrides: dict | None) -> ShopData:
+    """Return a copy of *shop* with material prices / machine rates patched.
+
+    *overrides* is {'material': {key: {field: value}}, 'machine': {...}} as
+    produced by store.get_overrides(). The base JSON stays immutable (and
+    lru-cached); only the returned copy carries the edits.
+    """
+    if not overrides:
+        return shop
+
+    materials = dict(shop.materials)
+    for key, fields in (overrides.get("material") or {}).items():
+        if key not in materials:
+            continue
+        patch = {f: float(v) for f, v in fields.items() if f in _OVERRIDE_FIELDS["material"]}
+        if patch:
+            materials[key] = replace(materials[key], **patch)
+
+    machines = dict(shop.machines)
+    for key, fields in (overrides.get("machine") or {}).items():
+        if key not in machines:
+            continue
+        patch = {f: float(v) for f, v in fields.items() if f in _OVERRIDE_FIELDS["machine"]}
+        if patch:
+            machines[key] = replace(machines[key], **patch)
+
+    return replace(shop, materials=materials, machines=machines)

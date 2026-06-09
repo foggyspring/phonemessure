@@ -22,7 +22,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .engine import load
+from . import store
+from .engine import ShopData, apply_overrides, load
 from .geometry import GeometryError, MeshMetrics
 from .geometry.parser import (
     KernelUnavailable,
@@ -34,6 +35,11 @@ from .service import QuoteError, QuoteRequest, build_quote
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_UPLOAD_BYTES = 60 * 1024 * 1024  # 60 MB — reject monster assemblies early
+
+
+def _effective_shop() -> ShopData:
+    """Base reference data with any runtime price/rate overrides applied."""
+    return apply_overrides(load(), store.get_overrides())
 
 
 def _metrics_payload(m: MeshMetrics) -> dict:
@@ -115,7 +121,7 @@ def build_app() -> FastAPI:
 
     @app.get("/api/materials")
     def materials() -> dict:
-        shop = load()
+        shop = _effective_shop()
         return {
             "materials": {
                 k: {
@@ -157,13 +163,18 @@ def build_app() -> FastAPI:
 
         try:
             req = QuoteRequest.from_payload(p)
-            payload = build_quote(metrics, req)
+            payload = build_quote(metrics, req, shop=_effective_shop())
         except QuoteError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except (KeyError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=f"invalid request: {exc}") from exc
 
         payload["source"] = extra
+        if p.get("save", True):
+            try:
+                payload["id"] = store.save_quote(payload)
+            except Exception:  # persistence must never break a live quote
+                payload["id"] = None
         return JSONResponse(payload)
 
     @app.post("/api/quote/pdf")
@@ -180,6 +191,61 @@ def build_app() -> FastAPI:
             media_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{name}_quote.pdf"'},
         )
+
+    @app.get("/api/quotes")
+    def quotes(limit: int = 50) -> dict:
+        return {"quotes": store.list_quotes(limit=max(1, min(limit, 500)))}
+
+    @app.get("/api/quotes/{quote_id}")
+    def quote_by_id(quote_id: str) -> JSONResponse:
+        payload = store.get_quote(quote_id)
+        if payload is None:
+            raise HTTPException(status_code=404, detail=f"quote '{quote_id}' not found")
+        return JSONResponse(payload)
+
+    @app.get("/api/quotes/{quote_id}/pdf")
+    def quote_pdf_by_id(quote_id: str) -> Response:
+        payload = store.get_quote(quote_id)
+        if payload is None:
+            raise HTTPException(status_code=404, detail=f"quote '{quote_id}' not found")
+        pdf = build_quote_pdf(payload, quote_no=quote_id)
+        name = (payload.get("input", {}).get("part_name") or "quote").replace(" ", "_")
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{name}_{quote_id}.pdf"'},
+        )
+
+    @app.put("/api/admin/price")
+    def set_price(body: dict) -> dict:
+        """Maintain 当日市场克单价 / 机床时租 at runtime (the brief's admin panel).
+
+        body = {"kind": "material"|"machine", "key": str, "field": str, "value": number}
+        """
+        try:
+            kind = str(body["kind"])
+            key = str(body["key"])
+            field = str(body["field"])
+            value = float(body["value"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=f"invalid body: {exc}") from exc
+
+        # Validate the key exists and the field is overridable.
+        shop = load()
+        catalog = shop.materials if kind == "material" else shop.machines if kind == "machine" else None
+        if catalog is None:
+            raise HTTPException(status_code=400, detail="kind must be 'material' or 'machine'")
+        if key not in catalog:
+            raise HTTPException(status_code=404, detail=f"unknown {kind} '{key}'")
+        try:
+            store.set_override(kind, key, field, value)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "kind": kind, "key": key, "field": field, "value": value}
+
+    @app.get("/api/admin/overrides")
+    def overrides() -> dict:
+        return store.get_overrides()
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:

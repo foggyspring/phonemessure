@@ -313,6 +313,7 @@ async function getQuote() {
     }
     state.lastPayload = await res.json();
     renderResult(state.lastPayload);
+    loadHistory();
   } catch (e) {
     showError("网络错误: " + e.message);
   } finally {
@@ -385,6 +386,40 @@ function renderResult(p) {
   $("result").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+// ───────────────────────── history ─────────────────────────
+async function loadHistory() {
+  let rows;
+  try {
+    rows = (await (await fetch("/api/quotes?limit=12")).json()).quotes || [];
+  } catch { return; }
+  const tb = $("hist-table").querySelector("tbody");
+  $("hist-empty").classList.toggle("hidden", rows.length > 0);
+  tb.innerHTML = "";
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    const when = (r.created_at || "").replace("T", " ").slice(5, 16);
+    tr.innerHTML =
+      `<td>${r.part_name || "part"}<div class="h-id">${r.id}</div></td>` +
+      `<td>${r.material}×${r.quantity}<br><span class="muted tiny">${when}</span></td>` +
+      `<td class="h-price">${money(r.unit_price, r.currency || "CNY")}</td>` +
+      `<td class="h-pdf"><a href="/api/quotes/${r.id}/pdf" target="_blank">PDF</a></td>`;
+    tr.addEventListener("click", (e) => {
+      if (e.target.tagName === "A") return; // let the PDF link work
+      reopenQuote(r.id);
+    });
+    tb.appendChild(tr);
+  }
+}
+
+async function reopenQuote(id) {
+  try {
+    const res = await fetch(`/api/quotes/${id}`);
+    if (!res.ok) return;
+    state.lastPayload = await res.json();
+    renderResult(state.lastPayload);
+  } catch { /* ignore */ }
+}
+
 async function downloadPdf() {
   if (!state.lastPayload) return;
   const btn = $("pdf-btn");
@@ -445,9 +480,11 @@ function main() {
   wireUploads();
   loadShop();
   loadHealth();
+  loadHistory();
   $("add-hole").addEventListener("click", () => addHoleRow());
   $("quote-btn").addEventListener("click", getQuote);
   $("pdf-btn").addEventListener("click", downloadPdf);
+  $("hist-refresh").addEventListener("click", loadHistory);
   ["m-l", "m-w", "m-h"].forEach((id) => $(id).addEventListener("input", refreshQuoteEnabled));
 }
 
