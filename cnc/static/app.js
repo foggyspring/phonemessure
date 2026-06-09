@@ -538,9 +538,14 @@ function renderResult(p, isLive) {
     return `<li class="${s.c}"><span>${badge}<b>${esc(d.title)}</b> — ${esc(d.detail)}
       <span class="muted tiny">建议：${esc(d.suggestion)}</span></span></li>`;
   }).join("");
+  const sum = p.dfm_summary;
+  const sumHtml = sum
+    ? `<li class="dfm-sum ${sum.level}"><span><b>制造风险概览</b> — ${esc(sum.headline)}` +
+      `<span class="muted tiny">（高 ${sum.counts.high} · 中 ${sum.counts.medium} · 低 ${sum.counts.low}）</span></span></li>`
+    : "";
   const notes = [...(q.notes || []), ...(pl.notes || [])];
   const noteHtml = notes.map((n) => `<li class="info"><span class="w-ico">·</span><span class="muted">${esc(n)}</span></li>`).join("");
-  $("warn-list").innerHTML = (dfmHtml + noteHtml) ||
+  $("warn-list").innerHTML = (sumHtml + dfmHtml + noteHtml) ||
     `<li class="info"><span>无明显可加工性风险 No DFM flags</span></li>`;
   if (dfm.length) $("warn-card").querySelector("h3").textContent =
     hasRisk ? "工艺提示 Notes & DFM（有风险）" : "工艺提示 Notes & DFM";

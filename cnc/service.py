@@ -17,6 +17,22 @@ from .dfm import analyze_dfm
 from .suggest import compare_all_materials, suggest_materials
 
 
+def _dfm_summary(findings: list[dict]) -> dict:
+    """One-glance manufacturability verdict: per-severity counts + a headline."""
+    counts = {"high": 0, "medium": 0, "low": 0, "info": 0}
+    for d in findings:
+        counts[d.get("severity", "info")] = counts.get(d.get("severity", "info"), 0) + 1
+    if counts["high"]:
+        level, headline = "high", f"{counts['high']} 项高风险，建议工程评审后再投产"
+    elif counts["medium"]:
+        level, headline = "medium", f"{counts['medium']} 项中风险，注意工艺细节"
+    elif counts["low"]:
+        level, headline = "low", "存在轻微提示，整体可加工"
+    else:
+        level, headline = "ok", "无明显可加工性风险，可顺利加工"
+    return {"level": level, "headline": headline, "counts": counts}
+
+
 def _price_drivers(req_cost: dict) -> dict:
     """Plain-language 'why this price' summary for the customer.
 
@@ -284,6 +300,11 @@ def build_quote(
                                "high": round(_up * (1 + band), 2),
                                "band_pct": band}
 
+    dfm = analyze_dfm(metrics, feat, tight_tolerance=req.tight_tolerance,
+                      requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
+                      wall_auto=auto_wall is not None, holes_auto=holes_auto,
+                      watertight=mesh_watertight)
+
     return {
         "input": {
             "part_name": req.part_name or "part",
@@ -337,10 +358,8 @@ def build_quote(
         "quote": quote.to_dict(),
         "price_drivers": _price_drivers(quote.requested.to_dict()),
         "warnings": feat.warnings,
-        "dfm": analyze_dfm(metrics, feat, tight_tolerance=req.tight_tolerance,
-                           requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
-                           wall_auto=auto_wall is not None, holes_auto=holes_auto,
-                           watertight=mesh_watertight),
+        "dfm": dfm,
+        "dfm_summary": _dfm_summary(dfm),
         "material_suggestions": suggest_materials(feat, material, finish, shop, req.quantity),
         "fx": _resolve_fx(shop, req.currency),
         "logistics": _logistics(shop, plan, material, req.quantity, quote),

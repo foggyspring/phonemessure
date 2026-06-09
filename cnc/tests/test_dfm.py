@@ -85,6 +85,19 @@ def test_tap_drill_recommendation_for_metric_thread():
     assert not any(d["code"] == "tap_drill" for d in analyze_dfm(m, feat2))
 
 
+def test_dfm_summary_headline_and_counts():
+    # clean cube → ok verdict, no high/medium
+    clean = build_quote(metrics_from_stl_bytes(cube_stl(50.0)),
+                        QuoteRequest(material="AL6061", quantity=10))["dfm_summary"]
+    assert clean["level"] == "ok" and clean["counts"]["high"] == 0
+    # a thin tapped-wall part raises real flags → not ok
+    risky = build_quote(metrics_from_stl_bytes(cube_stl(50.0)),
+                        QuoteRequest(material="AL6061", quantity=10, min_wall_mm=0.3,
+                                     holes=[Hole(diameter_mm=0.8, depth_mm=20.0, count=1, threaded=True)]))["dfm_summary"]
+    assert risky["level"] in ("high", "medium")
+    assert risky["counts"]["high"] + risky["counts"]["medium"] > 0
+
+
 def test_thread_engagement_too_shallow():
     # blind tapped hole with < 1×D engagement → strength warning
     m = metrics_from_stl_bytes(cube_stl(50.0))

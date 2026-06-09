@@ -387,6 +387,12 @@ table.hist .h-id { color: var(--muted2); font-family: ui-monospace, "SF Mono", m
 .sev-badge.medium { background: #e0922f; }
 .sev-badge.low { background: #5b7fb0; }
 
+.dfm-sum { border-left: 3px solid var(--border2); padding-left: 9px; margin-bottom: 6px; }
+.dfm-sum.high { border-left-color: #d9534f; }
+.dfm-sum.medium { border-left-color: #e0922f; }
+.dfm-sum.low { border-left-color: #5b7fb0; }
+.dfm-sum.ok { border-left-color: #3fb950; }
+
 .foot { text-align: center; color: var(--muted2); font-size: 12px; padding: 22px; }
 .mat-suggest { margin: 8px 0; line-height: 1.9; }
 .suggest-chip { background: rgba(47,129,247,0.12); color: var(--accent); border: 1px solid var(--accent);
