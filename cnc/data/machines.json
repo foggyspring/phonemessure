@@ -64,6 +64,7 @@
     "rush_lead_days": 3,
     "standard_lead_days": 10,
     "daily_capacity_hours": 16,
+    "tool_wear_cny_per_hour": 30.0,
     "lead_time_tiers": [
       {
         "key": "economy",

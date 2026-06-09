@@ -209,6 +209,17 @@ def test_suspicious_tiny_part_warns_units():
     assert any("单位" in w for w in q["warnings"])
 
 
+def test_tool_wear_charged_for_hard_materials_not_aluminium():
+    import trimesh
+    sb = trimesh.creation.box((80, 60, 30)).export(file_type="stl")
+    m = metrics_from_stl_bytes(sb)
+    al = build_quote(m, QuoteRequest(material="AL6061", quantity=10), mesh_stl=sb, backend="analytic")
+    ti = build_quote(m, QuoteRequest(material="TITANIUM_TC4", quantity=10), mesh_stl=sb, backend="analytic")
+    # aluminium (machinability 1.0) pays no tool-wear consumable; titanium does
+    assert not any("刀具消耗" in n for n in al["quote"]["notes"])
+    assert any("刀具消耗" in n for n in ti["quote"]["notes"])
+
+
 def test_large_order_lead_time_extends_with_capacity():
     m = _metrics()
     small = build_quote(m, QuoteRequest(material="AL6061", quantity=1))["quote"]

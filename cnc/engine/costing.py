@@ -187,6 +187,17 @@ def price(
     material_cny, material_gross_cny, scrap_credit_cny = _material_cost(plan, material)
     machining_cny = _machining_cost(plan)
 
+    # Tool-wear consumable: hard/abrasive alloys (titanium, stainless) burn through
+    # carbide far faster than aluminium. Charge only the part *above* the Al baseline
+    # (machinability − 1), over the actual cutting time, so Al6061 (=1.0) pays nothing.
+    t = plan.times
+    cutting_min = t.roughing_min + t.finishing_min + t.drilling_min + t.tapping_min
+    wear_rate = float(biz.get("tool_wear_cny_per_hour", 0.0))
+    tool_wear_cny = (cutting_min / 60.0) * wear_rate * max(0.0, material.machinability - 1.0)
+    if tool_wear_cny > 0:
+        machining_cny += tool_wear_cny
+        notes.append(f"刀具消耗 Tool wear（{material.label} 难加工）¥{tool_wear_cny:.1f}/件")
+
     # Surface treatment is priced on the part's real surface area (cm^2 -> dm^2).
     area_dm2 = plan.part_area_cm2 / 100.0
     finish_var_cny = finish.per_dm2_cny * area_dm2
