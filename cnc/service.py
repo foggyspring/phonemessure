@@ -17,6 +17,27 @@ from .dfm import analyze_dfm
 from .suggest import compare_all_materials, suggest_materials
 
 
+def _assumptions(req, feat, holes_auto: bool, tol_label: str | None,
+                 finish_label: str) -> list[str]:
+    """Deterministic 'this quote assumes…' list to cut RFQ back-and-forth.
+
+    Every line states an assumption the price depends on, so the customer knows
+    exactly what to confirm or supply (threads, tolerance, heat-treat, stock).
+    """
+    out = [f"公差按 {tol_label or '标准 ±0.1'}（仅关键尺寸需紧公差请注明）"]
+    threaded = any(getattr(h, "threaded", False) for h in (req.holes or []))
+    if holes_auto:
+        out.append("孔为模型自动识别，均按未攻丝通孔计；如需螺纹/沉孔请注明规格")
+    elif req.holes and not threaded:
+        out.append("孔按未攻丝计；如需螺纹请注明螺纹规格与深度")
+    out.append(f"表面处理：{finish_label}")
+    out.append("未含热处理/去应力/阳极硬化等特殊工艺（如需请注明）")
+    out.append("毛坯按标准板/棒料，单面留加工余量；材料证明(质保书)如需请注明")
+    if not req.requires_5axis:
+        out.append("默认三轴加工；如有倒扣/侧孔需五轴请注明")
+    return out
+
+
 def _dfm_summary(findings: list[dict]) -> dict:
     """One-glance manufacturability verdict: per-severity counts + a headline."""
     counts = {"high": 0, "medium": 0, "low": 0, "info": 0}
@@ -369,6 +390,8 @@ def build_quote(
         "warnings": feat.warnings,
         "dfm": dfm,
         "dfm_summary": _dfm_summary(dfm),
+        "assumptions": _assumptions(req, feat, holes_auto,
+                                    tol["label"] if tol else None, finish.label),
         "material_suggestions": suggest_materials(feat, material, finish, shop, req.quantity),
         "fx": _resolve_fx(shop, req.currency),
         "logistics": _logistics(shop, plan, material, req.quantity, quote),

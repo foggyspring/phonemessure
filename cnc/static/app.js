@@ -550,6 +550,14 @@ function renderResult(p, isLive) {
   if (dfm.length) $("warn-card").querySelector("h3").textContent =
     hasRisk ? "工艺提示 Notes & DFM（有风险）" : "工艺提示 Notes & DFM";
 
+  const assume = p.assumptions || [];
+  const aCard = $("assume-card");
+  if (aCard) {
+    aCard.classList.toggle("hidden", !assume.length);
+    $("assume-list").innerHTML = assume.map((a) =>
+      `<li class="info"><span class="w-ico">·</span><span class="muted">${esc(a)}</span></li>`).join("");
+  }
+
   renderEstimator(p);
   renderCalibration(p, isLive);
   $("result-badge").hidden = !isLive;

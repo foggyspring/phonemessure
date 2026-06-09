@@ -379,6 +379,14 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
         for n in notes:
             flow.append(Paragraph(f"• {n}", small))
     flow.append(Spacer(1, 4 * mm))
+
+    # ---- Quote assumptions (cuts RFQ back-and-forth) ----
+    assumptions = payload.get("assumptions") or []
+    if assumptions:
+        flow.append(Paragraph("<b>报价假设 Quote assumptions</b>", body))
+        for a in assumptions:
+            flow.append(Paragraph(f"• {a}", small))
+        flow.append(Spacer(1, 4 * mm))
     flow.append(
         Paragraph(
             "本报价由自动报价引擎生成，仅供参考；最终以工程评审为准。"

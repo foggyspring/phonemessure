@@ -243,6 +243,18 @@ def test_min_order_floor_tops_up_small_orders():
     assert big["min_order_topup_cny"] == 0.0
 
 
+def test_quote_assumptions_present_and_thread_aware():
+    import trimesh
+    box = trimesh.creation.box((100, 75, 25)); box.apply_translation((50, 37.5, 12.5))
+    c = trimesh.creation.cylinder(radius=3.3, height=40, sections=24); c.apply_translation((20, 20, 12.5))
+    sb = box.difference(c).export(file_type="stl")
+    a = build_quote(metrics_from_stl_bytes(sb),
+                    QuoteRequest(material="AL6061", quantity=10), mesh_stl=sb)["assumptions"]
+    assert any("公差" in x for x in a)
+    assert any("热处理" in x for x in a)
+    assert any("未攻丝" in x for x in a)          # auto-detected holes → thread caveat
+
+
 def test_outsourced_finish_extends_lead_time():
     m = _metrics()
     raw = build_quote(m, QuoteRequest(material="AL6061", quantity=10, finish="none"))["quote"]
