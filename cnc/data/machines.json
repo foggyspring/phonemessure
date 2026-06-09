@@ -44,6 +44,12 @@
       {"key": "rush",     "label": "特急 Rush",     "days": 3,  "factor": 1.4}
     ],
     "default_lead_time": "standard",
+    "tolerance_classes": [
+      {"key": "standard",  "label": "标准 ±0.1",  "tol_mm": 0.1,  "margin_bonus": 0.0,  "machining_factor": 1.0,  "inspection_min": 0.0},
+      {"key": "precision", "label": "精密 ±0.05", "tol_mm": 0.05, "margin_bonus": 0.05, "machining_factor": 1.15, "inspection_min": 6.0},
+      {"key": "ultra",     "label": "超精 ±0.02", "tol_mm": 0.02, "margin_bonus": 0.1,  "machining_factor": 1.3,  "inspection_min": 12.0}
+    ],
+    "default_tolerance": "standard",
     "quantity_breaks": [1, 5, 10, 25, 50, 100],
     "tax_rate": 0.13,
     "tax_label": "增值税 VAT",

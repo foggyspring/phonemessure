@@ -45,6 +45,7 @@ class FeatureSet:
     setup_dirs: int | None = None        # distinct machining directions (mesh)
     setup_count: int | None = None       # mesh-derived 3-axis setup count
     undercut_frac: float = 0.0           # area fraction not facing any ±axis
+    tolerance: dict | None = None        # resolved tolerance class params
 
     @property
     def total_holes(self) -> int:

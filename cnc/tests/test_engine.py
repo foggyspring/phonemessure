@@ -183,3 +183,18 @@ def test_tax_and_validity_present():
     assert Q["valid_until"] is not None
     # part weight surfaced
     assert q["geometry"]["part_weight_g"] > 0
+
+
+def test_tolerance_classes_scale_price_and_inspection():
+    m = _metrics()
+    std = build_quote(m, QuoteRequest(material="AL6061", quantity=5, tolerance="standard"))
+    pre = build_quote(m, QuoteRequest(material="AL6061", quantity=5, tolerance="precision"))
+    ult = build_quote(m, QuoteRequest(material="AL6061", quantity=5, tolerance="ultra"))
+    su = std["quote"]["requested"]["unit_price_cny"]
+    pu = pre["quote"]["requested"]["unit_price_cny"]
+    uu = ult["quote"]["requested"]["unit_price_cny"]
+    assert su < pu < uu
+    assert std["plan"]["times"]["inspection_min"] == 0
+    assert ult["plan"]["times"]["inspection_min"] > pre["plan"]["times"]["inspection_min"]
+    # legacy tight_tolerance still works (maps to a non-standard class)
+    assert build_quote(m, QuoteRequest(material="AL6061", quantity=5, tight_tolerance=True))["quote"]["requested"]["unit_price_cny"] > su

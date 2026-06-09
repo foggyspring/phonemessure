@@ -201,16 +201,19 @@ def plan(
     tools = _count_tools(feat)
     fixturing_min = capp["fixture_min_per_setup"] * setups
     toolchange_min = capp["toolchange_min_per_tool"] * tools
-    inspection_min = (
-        capp["tight_tolerance_inspection_min_per_part"] if feat.tight_tolerance else 0.0
-    )
-
-    # ---- Tight-tolerance slows the cutting passes ----
-    if feat.tight_tolerance:
-        f = capp["tight_tolerance_machining_factor"]
-        roughing_min *= f
-        finishing_min *= f
-        notes.append(f"精密公差：切削系数 ×{f}")
+    # Tolerance class drives inspection time + a cutting slowdown (the resolved
+    # class is attached to the feature set; fall back to the tight-tol constants).
+    tol = feat.tolerance
+    if tol is not None:
+        inspection_min = float(tol["inspection_min"])
+        tol_factor = float(tol["machining_factor"])
+    else:
+        inspection_min = capp["tight_tolerance_inspection_min_per_part"] if feat.tight_tolerance else 0.0
+        tol_factor = capp["tight_tolerance_machining_factor"] if feat.tight_tolerance else 1.0
+    if tol_factor != 1.0:
+        roughing_min *= tol_factor
+        finishing_min *= tol_factor
+        notes.append(f"{tol['label'] if tol else '精密公差'}：切削系数 ×{tol_factor}")
 
     # Floor: tiny parts still cost real cycle time (load/unload/probe).
     raw_cut = roughing_min + finishing_min + drilling_min + tapping_min

@@ -25,6 +25,7 @@ class QuoteRequest:
     quantity: int = 1
     finish: str = "none"
     tight_tolerance: bool = False
+    tolerance: str | None = None     # 标准/精密/超精 tolerance class key
     requires_5axis: bool = False
     min_wall_mm: float | None = None
     rush: bool = False
@@ -52,6 +53,7 @@ class QuoteRequest:
             quantity=max(1, int(p.get("quantity", 1))),
             finish=str(p.get("finish", "none")),
             tight_tolerance=bool(p.get("tight_tolerance", False)),
+            tolerance=(str(p["tolerance"]) if p.get("tolerance") else None),
             requires_5axis=bool(p.get("requires_5axis", False)),
             min_wall_mm=(float(p["min_wall_mm"]) if p.get("min_wall_mm") else None),
             rush=bool(p.get("rush", False)),
@@ -136,13 +138,23 @@ def build_quote(
                           count=h["count"], threaded=False) for h in detected_holes]
             holes_auto = True
 
+    # Resolve the tolerance class (标准/精密/超精). tight_tolerance is the legacy
+    # alias for the first non-standard class.
+    tol_classes = shop.business.get("tolerance_classes") or []
+    tol_key = req.tolerance or (
+        next((t["key"] for t in tol_classes if t["margin_bonus"] > 0), "precision")
+        if req.tight_tolerance else shop.business.get("default_tolerance", "standard"))
+    tol = next((t for t in tol_classes if t["key"] == tol_key),
+               tol_classes[0] if tol_classes else None)
+
     feat = analyze(
         metrics,
         holes=holes,
-        tight_tolerance=req.tight_tolerance,
+        tight_tolerance=bool(tol and tol["margin_bonus"] > 0) or req.tight_tolerance,
         requires_5axis=req.requires_5axis,
         min_wall_mm=min_wall,
     )
+    feat.tolerance = tol
 
     # Mesh-derived fixturing setups + undercut fraction (refines the bbox guess).
     if mesh_stl is not None:
@@ -183,6 +195,8 @@ def build_quote(
         tight_tolerance=req.tight_tolerance,
         rush=req.rush,
         lead_time=req.lead_time,
+        tolerance_margin_bonus=(float(tol["margin_bonus"]) if tol else None),
+        tolerance_label=(tol["label"] if tol else None),
     )
 
     dims = metrics.dims_mm
@@ -205,6 +219,7 @@ def build_quote(
             "customer": req.customer,
             "material_price_cny_per_kg": material.price_cny_per_kg,
             "price_source": (price_sources or {}).get(material.key, "static"),
+            "tolerance": tol["label"] if tol else None,
             "holes": [
                 {
                     "diameter_mm": h.diameter_mm,

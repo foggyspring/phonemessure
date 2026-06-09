@@ -147,14 +147,18 @@ def price(
     tight_tolerance: bool = False,
     rush: bool = False,
     lead_time: str | None = None,
+    tolerance_margin_bonus: float | None = None,
+    tolerance_label: str | None = None,
 ) -> Quote:
     biz = shop.business
     margin = float(biz["margin"])
     notes: list[str] = []
 
-    if tight_tolerance:
-        margin += float(biz["tight_tolerance_margin_bonus"])
-        notes.append("精密公差：风险溢价提高利润率")
+    bonus = (tolerance_margin_bonus if tolerance_margin_bonus is not None
+             else (float(biz["tight_tolerance_margin_bonus"]) if tight_tolerance else 0.0))
+    if bonus > 0:
+        margin += bonus
+        notes.append(f"{tolerance_label or '精密公差'}：风险溢价提高利润率 +{bonus*100:.0f}%")
 
     # Per-part variable costs.
     material_cny, material_gross_cny, scrap_credit_cny = _material_cost(plan, material)
