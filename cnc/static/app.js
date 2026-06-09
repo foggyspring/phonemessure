@@ -766,7 +766,8 @@ function renderLogistics(p) {
   if (!el) return;
   const L = p.logistics;
   if (!L) { el.innerHTML = ""; return; }
-  let h = `<span class="muted tiny">预估运费 Shipping（${L.order_weight_kg} kg）：${money(L.shipping_cny)}</span>`;
+  const crate = L.crated ? `，含木箱 ${money(L.crate_cny)}` : "";
+  let h = `<span class="muted tiny">预估运费 Shipping（${L.order_weight_kg} kg${crate}）：${money(L.shipping_cny)}</span>`;
   if (!L.meets_min_order)
     h += ` <span class="min-order">未达最小起订额 ${money(L.min_order_cny)}，差 ${money(L.shortfall_cny)}</span>`;
   el.innerHTML = h;

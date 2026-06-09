@@ -64,11 +64,20 @@ def _logistics(shop: ShopData, plan, material, qty: int, quote) -> dict:
     part_kg = plan.part_volume_cm3 * material.density_g_cm3 / 1000.0   # cm³·(g/cm³)=g → kg
     order_kg = part_kg * max(1, qty)
     shipping = float(biz.get("packaging_cny", 0)) + order_kg * float(biz.get("shipping_cny_per_kg", 0))
+    # Heavy orders need a crate/pallet, not a carton — a flat carton fee can't
+    # cover a 20kg shipment without risking transit damage claims.
+    crate_threshold = float(biz.get("crate_threshold_kg", 0) or 0)
+    crate_cny = float(biz.get("crate_cny", 0) or 0)
+    crated = crate_threshold > 0 and order_kg > crate_threshold
+    if crated:
+        shipping += crate_cny
     net = quote.requested.unit_price_cny * max(1, qty)
     min_order = float(biz.get("min_order_cny", 0))
     return {
         "order_weight_kg": round(order_kg, 3),
         "shipping_cny": round(shipping, 2),
+        "crated": crated,
+        "crate_cny": crate_cny if crated else 0.0,
         "min_order_cny": min_order,
         "meets_min_order": net >= min_order,
         "shortfall_cny": round(max(0.0, min_order - net), 2),

@@ -191,6 +191,8 @@
     "min_order_cny": 200.0,
     "shipping_cny_per_kg": 12.0,
     "packaging_cny": 25.0,
+    "crate_threshold_kg": 15.0,
+    "crate_cny": 120.0,
     "deburr_base_cny": 8.0,
     "deburr_per_dm2_cny": 4.0,
     "tax_rate": 0.13,

@@ -375,6 +375,9 @@ def test_logistics_weight_and_min_order():
     assert fifty["shipping_cny"] > one["shipping_cny"]
     assert one["meets_min_order"] is False and one["shortfall_cny"] > 0
     assert fifty["meets_min_order"] is True
+    # ~17kg order crosses the crate threshold →木箱 fee added; the single part doesn't
+    assert fifty["crated"] is True and fifty["crate_cny"] > 0
+    assert one["crated"] is False
 
 
 def test_material_comparison_on_demand():
