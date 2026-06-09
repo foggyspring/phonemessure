@@ -100,12 +100,27 @@ export AI_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 export AI_MODEL=claude-opus-4-8        # 可选，默认即此
 
-# 方案 B：任意 OpenAI 兼容端点（自建/第三方）
+# 方案 B：任意 OpenAI 兼容端点（自建/第三方，如 vectorengine）
 export AI_PROVIDER=openai
-export AI_API_KEY=...
-export AI_BASE_URL=https://your-endpoint/v1
-export AI_MODEL=gpt-4o-mini
+export AI_BASE_URL=https://api.vectorengine.ai/v1
+export AI_API_KEY=sk-...               # 你的密钥，仅放环境变量/密钥管理，勿入库
+export AI_MODEL=gpt-5.5-pro
+export AI_TEMPERATURE=0.7              # 可选
 ```
+
+配置后用自带脚本做联调（在能访问该端点的环境运行）：
+
+```bash
+python -m scripts.ai_smoke
+```
+
+它会打印 provider 状态、一句话自我介绍，以及一次驱动真实报价工具的 Agent 回合。
+适配器经单测验证：请求构造（model/temperature/tools/Authorization）、tool_call 与纯文本
+解析、错误优雅回退，并跑通"模型→工具→真实引擎→总结"的完整循环（见 `test_ai_provider.py`）。
+
+> **本开发沙箱的出站是白名单制**：直接访问 `api.vectorengine.ai` 会被代理 403 拦截
+> （与 Sina/百度同因）。上线/联调请在**网络策略放行该端点**的环境运行——参见
+> https://code.claude.com/docs/en/claude-code-on-the-web 的网络策略说明。
 
 切换后 `/api/ai/status` 报告 `live:true`，agent 循环把工具 schema 交给真实模型做
 推理与工具编排；其余（审批、护栏、工具实现）完全复用。任一调用失败 → 优雅回退提示。

@@ -73,38 +73,66 @@ class AnthropicProvider(LLMProvider):
 
 
 class OpenAIProvider(LLMProvider):
-    """Any OpenAI-compatible /chat/completions endpoint (function calling)."""
+    """Any OpenAI-compatible /chat/completions endpoint (function calling).
+
+    Configured by env: AI_BASE_URL, AI_API_KEY (or OPENAI_API_KEY), AI_MODEL,
+    optional AI_TEMPERATURE. The HTTP transport is injectable so request/response
+    handling is unit-tested without network.
+    """
     name = "openai"
 
-    def __init__(self):
+    def __init__(self, http=None):
         self.model = os.environ.get("AI_MODEL", "gpt-4o-mini")
-        self.base = os.environ.get("AI_BASE_URL", "https://api.openai.com/v1")
+        self.base = os.environ.get("AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         self.key = os.environ.get("AI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        temp = os.environ.get("AI_TEMPERATURE")
+        self.temperature = float(temp) if temp not in (None, "") else None
         self.available = bool(self.key)
+        self._http = http or self._default_post
+
+    def _default_post(self, url: str, headers: dict, payload: dict) -> dict:
+        import urllib.request
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                     headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=45) as r:
+            return json.loads(r.read())
+
+    def _payload(self, messages: list[dict], tools: list[dict]) -> dict:
+        msgs = [{"role": "system", "content": _SYSTEM}]
+        for m in messages:
+            if m.get("role") == "tool":
+                msgs.append({"role": "user", "content": f"[工具 {m.get('name')} 结果] {m.get('summary', '')}"})
+            else:
+                msgs.append({"role": m.get("role", "user"), "content": m.get("content", "") or "…"})
+        body: dict = {"model": self.model, "messages": msgs}
+        if tools:
+            body["tools"] = [{"type": "function", "function": {
+                "name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
+                for t in tools]
+        if self.temperature is not None:
+            body["temperature"] = self.temperature
+        return body
+
+    @staticmethod
+    def _parse(data: dict) -> AssistantTurn:
+        msg = (data.get("choices") or [{}])[0].get("message", {}) or {}
+        calls = []
+        for i, tc in enumerate(msg.get("tool_calls") or []):
+            fn = tc.get("function", {})
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except (ValueError, TypeError):
+                args = {}
+            calls.append(ToolCall(id=tc.get("id", f"c{i}"), name=fn.get("name", ""), arguments=args))
+        return AssistantTurn(text=msg.get("content") or "", tool_calls=calls, done=not calls)
 
     def chat(self, messages: list[dict], tools: list[dict]) -> AssistantTurn:
         if not self.available:
             return AssistantTurn(text="（AI 未配置）", done=True)
-        import urllib.request
-        oai_tools = [{"type": "function", "function": {
-            "name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
-            for t in tools]
-        msgs = [{"role": "system", "content": _SYSTEM}]
-        for m in messages:
-            if m.get("role") == "tool":
-                msgs.append({"role": "user", "content": f"[工具 {m.get('name')} 结果] {m.get('summary','')}"})
-            else:
-                msgs.append({"role": m.get("role", "user"), "content": m.get("content", "") or "…"})
-        body = json.dumps({"model": self.model, "messages": msgs, "tools": oai_tools}).encode()
-        req = urllib.request.Request(f"{self.base}/chat/completions", data=body, headers={
-            "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
+        headers = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                data = json.loads(r.read())
-            msg = data["choices"][0]["message"]
-            calls = [ToolCall(id=tc.get("id", f"c{i}"), name=tc["function"]["name"],
-                              arguments=json.loads(tc["function"].get("arguments") or "{}"))
-                     for i, tc in enumerate(msg.get("tool_calls") or [])]
-            return AssistantTurn(text=msg.get("content") or "", tool_calls=calls, done=not calls)
+            data = self._http(f"{self.base}/chat/completions", headers, self._payload(messages, tools))
+            return self._parse(data)
         except Exception as exc:
             return AssistantTurn(text=f"（AI 服务暂时不可用：{exc}）", done=True)
+

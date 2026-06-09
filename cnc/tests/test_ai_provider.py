@@ -73,3 +73,56 @@ def test_get_provider_falls_back_to_mock(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     from cnc.ai import get_provider
     assert get_provider().name == "mock"      # no key → graceful fallback
+
+
+def test_openai_adapter_request_and_toolcall_parse(monkeypatch):
+    # simulates the vectorengine (OpenAI-compatible) endpoint with an injected transport
+    monkeypatch.setenv("AI_API_KEY", "sk-test")
+    monkeypatch.setenv("AI_BASE_URL", "https://api.vectorengine.ai/v1")
+    monkeypatch.setenv("AI_MODEL", "gpt-5.5-pro")
+    monkeypatch.setenv("AI_TEMPERATURE", "0.7")
+    seen = {}
+
+    def fake_http(url, headers, payload):
+        seen.update(url=url, headers=headers, payload=payload)
+        return {"choices": [{"message": {"content": "", "tool_calls": [
+            {"id": "call_1", "function": {"name": "get_quote",
+             "arguments": '{"material":"SUS304","quantity":50}'}}]}}]}
+
+    from cnc.ai.providers_real import OpenAIProvider
+    p = OpenAIProvider(http=fake_http)
+    assert p.available
+    tools = [{"name": "get_quote", "description": "d", "parameters": {"type": "object", "properties": {}}}]
+    turn = p.chat([{"role": "user", "content": "SUS304 50件"}], tools)
+    assert seen["url"] == "https://api.vectorengine.ai/v1/chat/completions"
+    assert seen["headers"]["Authorization"] == "Bearer sk-test"
+    assert seen["payload"]["model"] == "gpt-5.5-pro" and seen["payload"]["temperature"] == 0.7
+    assert seen["payload"]["tools"][0]["function"]["name"] == "get_quote"
+    assert turn.tool_calls[0].name == "get_quote"
+    assert turn.tool_calls[0].arguments == {"material": "SUS304", "quantity": 50}
+    assert not turn.done
+
+
+def test_openai_adapter_plain_text(monkeypatch):
+    monkeypatch.setenv("AI_API_KEY", "sk-test")
+    from cnc.ai.providers_real import OpenAIProvider
+    p = OpenAIProvider(http=lambda u, h, pl: {"choices": [{"message": {"content": "你好，我是助手。"}}]})
+    turn = p.chat([{"role": "user", "content": "你好"}], [])
+    assert turn.text == "你好，我是助手。" and turn.done and not turn.tool_calls
+
+
+def test_openai_adapter_graceful_on_error(monkeypatch):
+    monkeypatch.setenv("AI_API_KEY", "sk-test")
+    from cnc.ai.providers_real import OpenAIProvider
+
+    def boom(u, h, pl):
+        raise RuntimeError("HTTP 403 Forbidden")
+    turn = OpenAIProvider(http=boom).chat([{"role": "user", "content": "hi"}], [])
+    assert turn.done and "不可用" in turn.text
+
+
+def test_get_provider_selects_openai(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("AI_API_KEY", "sk-test")
+    from cnc.ai import get_provider
+    assert get_provider().name == "openai"
