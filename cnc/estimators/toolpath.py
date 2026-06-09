@@ -35,6 +35,11 @@ _CUTTING_PATH = Path(__file__).resolve().parent.parent / "data" / "cutting.json"
 # Hard caps so a pathological/huge mesh can't hang the request.
 _MAX_LEVELS = 600
 _MAX_FACES = 400_000
+# Above this, sectioning a high-poly (usually organic-scan) mesh at every Z level
+# is too slow for an inline request — real validation hit 8–18 s on 50–170 k-face
+# scans. Such parts aren't prismatically machinable anyway, so fall back to the
+# fast analytic estimate and keep the request bounded.
+_MAX_FACES_TOOLPATH = 60_000
 _MAX_PART_MM = 1200.0     # above this, inline toolpath sim is too slow -> analytic
 _MAX_OFFSET_PASSES = 400  # bound pocket-clearing passes; extrapolate the rest
 
@@ -290,8 +295,9 @@ def load_mesh(stl_bytes: bytes, scale: float = 1.0):
         raise ToolpathUnavailable(f"could not load mesh: {exc}") from exc
     if mesh.is_empty or len(mesh.faces) == 0:
         raise ToolpathUnavailable("empty mesh")
-    if len(mesh.faces) > _MAX_FACES:
-        raise ToolpathUnavailable(f"mesh too large ({len(mesh.faces)} faces)")
+    if len(mesh.faces) > _MAX_FACES_TOOLPATH:
+        # too detailed for inline sectioning → analytic (bounds request latency)
+        raise ToolpathUnavailable(f"high-poly mesh ({len(mesh.faces)} faces) → analytic")
     if scale and scale != 1.0:
         mesh.apply_scale(scale)
     ext = mesh.bounds[1] - mesh.bounds[0]

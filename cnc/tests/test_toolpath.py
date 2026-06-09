@@ -146,3 +146,20 @@ def test_pocket_roughs_more_than_solid():
     assert pp.times.roughing_min > ps.times.roughing_min * 1.5
     rough = next(o for o in pp.operations if o["op"] == "roughing")
     assert rough["levels"] >= 5      # cavity cleared across multiple depths
+
+
+def test_high_poly_mesh_downgrades_to_analytic():
+    # real validation: 50–170k-face organic scans took 8–18s on toolpath.
+    # A >60k-face mesh must fall back to analytic to bound request latency.
+    import time
+
+    from cnc import estimators
+    shop = load()
+    big = trimesh.creation.icosphere(subdivisions=6, radius=20)   # ~80k faces
+    assert len(big.faces) > 60000
+    sb = big.export(file_type="stl")
+    feat = analyze(metrics_from_stl_bytes(sb))
+    t0 = time.time()
+    plan, info = estimators.make_plan(feat, shop.material("AL6061"), shop, backend="auto", mesh_stl=sb)
+    assert time.time() - t0 < 5.0
+    assert info["used"] == "analytic"
