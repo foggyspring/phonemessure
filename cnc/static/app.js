@@ -499,11 +499,52 @@ function renderResult(p, isLive) {
     : `<li class="info"><span class="w-ico">✅</span><span>无明显可加工性风险 No DFM flags</span></li>`;
 
   renderEstimator(p);
+  renderCalibration(p, isLive);
   $("result-badge").hidden = !isLive;
   const resEl = $("result");
   const wasHidden = resEl.classList.contains("hidden");
   resEl.classList.remove("hidden");
   if (wasHidden) { resEl.classList.add("reveal"); resEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
+}
+
+// ───────────────────────── calibration (admin) ─────────────────────────
+function renderCalibration(p, isLive) {
+  const card = $("cal-card");
+  const cal = p.plan?.calibration;
+  // factor note for everyone (shows when calibration is active)
+  if (cal && cal.factor && cal.factor !== 1) {
+    $("plan-table").insertAdjacentHTML("beforeend",
+      `<tr><td>实测校准 Calibration</td><td>×${cal.factor} (n=${cal.n})</td></tr>`);
+  }
+  // entry panel only for a logged-in admin on a saved quote (has id)
+  const canCalibrate = state.user && !isLive && p.id;
+  card.classList.toggle("hidden", !canCalibrate);
+  if (canCalibrate) {
+    $("cal-actual").value = "";
+    $("cal-status").textContent = cal && cal.n
+      ? `当前因子 ×${cal.factor}（${cal.n} 样本）` : "尚无校准样本";
+  }
+}
+
+async function submitCalibration() {
+  if (!state.lastPayload?.id) return;
+  const actual = parseFloat($("cal-actual").value);
+  if (!(actual > 0)) { toast("请输入有效的实测分钟", "err"); return; }
+  const btn = $("cal-submit"); btn.classList.add("loading");
+  try {
+    const r = await fetch("/api/calibration/actual", {
+      method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ quote_id: state.lastPayload.id, actual_min: actual }),
+    });
+    if (r.status === 401 || r.status === 403) { logout(); openLogin(); return; }
+    if (!r.ok) { toast("提交失败：" + ((await r.json().catch(() => ({}))).detail || r.status), "err"); return; }
+    const d = await r.json();
+    const f = d.factors?.[d.material];
+    toast("已记录实测，材料因子 " + (f ? `×${f.factor} (n=${f.n})` : "样本不足"), "ok");
+    requestQuote(false);   // re-quote to reflect the updated factor
+  } catch (e) {
+    toast("网络错误：" + e.message, "err");
+  } finally { btn.classList.remove("loading"); }
 }
 
 // ───────────────────────── history ─────────────────────────
@@ -785,6 +826,7 @@ function main() {
   $("login-submit").addEventListener("click", doLogin);
   $("login-modal").addEventListener("click", (e) => { if (e.target.id === "login-modal") closeLogin(); });
   $("login-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+  $("cal-submit").addEventListener("click", submitCalibration);
 
   // Live re-quote on any parameter change (once a first quote exists).
   ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "rush", "backend", "units", "customer"].forEach((id) =>

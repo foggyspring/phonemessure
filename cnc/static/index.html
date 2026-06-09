@@ -194,6 +194,16 @@
       <h3>工艺提示 Notes &amp; DFM</h3>
       <ul id="warn-list" class="warn-list"></ul>
     </div>
+
+    <div class="card hidden" id="cal-card">
+      <h3>反标定 Calibration（管理员）</h3>
+      <p class="muted tiny">录入该零件的实际单件加工分钟，系统据此校准未来同材料的工时估计（≥3 个样本生效）。</p>
+      <div class="cal-row">
+        <input id="cal-actual" type="number" min="0" step="0.1" placeholder="实测单件分钟 actual min/part" />
+        <button id="cal-submit" class="primary small">提交实测</button>
+        <span class="muted tiny" id="cal-status"></span>
+      </div>
+    </div>
   </section>
 
   <footer class="foot">

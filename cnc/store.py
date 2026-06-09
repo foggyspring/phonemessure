@@ -50,6 +50,15 @@ CREATE TABLE IF NOT EXISTS settings (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS calibration_samples (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at    TEXT NOT NULL,
+    material      TEXT NOT NULL,
+    backend       TEXT,
+    quote_id      TEXT,
+    estimated_min REAL NOT NULL,
+    actual_min    REAL NOT NULL
+);
 """
 
 
@@ -191,3 +200,31 @@ def get_user(username: str, *, path: str | os.PathLike | None = None) -> dict | 
 def count_users(*, path: str | os.PathLike | None = None) -> int:
     with _connect(path) as conn:
         return conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+
+
+# ------------------------------------------------------- calibration ----
+def add_calibration_sample(
+    material: str, estimated_min: float, actual_min: float,
+    *, backend: str | None = None, quote_id: str | None = None,
+    path: str | os.PathLike | None = None,
+) -> None:
+    with _connect(path) as conn:
+        conn.execute(
+            "INSERT INTO calibration_samples "
+            "(created_at, material, backend, quote_id, estimated_min, actual_min) "
+            "VALUES (?,?,?,?,?,?)",
+            (_now(), material, backend, quote_id, float(estimated_min), float(actual_min)),
+        )
+
+
+def calibration_samples(*, path: str | os.PathLike | None = None) -> list[dict]:
+    with _connect(path) as conn:
+        rows = conn.execute(
+            "SELECT material, backend, estimated_min, actual_min FROM calibration_samples"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def time_factors(*, path: str | os.PathLike | None = None) -> dict:
+    from .calibration import compute_time_factors
+    return compute_time_factors(calibration_samples(path=path))

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import estimators
+from .calibration import factor_for
 from .engine import ShopData, load
 from .engine import costing as costing_mod
 from .geometry import MeshMetrics, analyze
@@ -72,6 +73,7 @@ def build_quote(
     mesh_stl: bytes | None = None,
     backend: str = "auto",
     price_sources: dict | None = None,
+    calibration_factors: dict | None = None,
 ) -> dict:
     shop = shop or load()
 
@@ -124,6 +126,18 @@ def build_quote(
         backend=backend, machine_key=req.machine, mesh_stl=mesh_stl,
         unit_scale=unit_scale,
     )
+
+    # Calibration: scale the estimate by the factor learned from real cycle
+    # times for this material (own factor → global → 1.0). Applied before
+    # costing so both the shown time and the price reflect it.
+    cal_factor, cal_n = factor_for(calibration_factors, material.key)
+    if cal_factor != 1.0:
+        t = plan.times
+        for attr in ("roughing_min", "finishing_min", "drilling_min", "tapping_min",
+                     "toolchange_min", "fixturing_min", "inspection_min"):
+            setattr(t, attr, round(getattr(t, attr) * cal_factor, 3))
+        plan.notes.append(f"工时按历史实测校准 ×{cal_factor} (n={cal_n})")
+
     quote = costing_mod.price(
         plan,
         material,
@@ -137,6 +151,7 @@ def build_quote(
     dims = metrics.dims_mm
     plan_d = plan.to_dict()
     plan_d["machine_label"] = plan.machine.label
+    plan_d["calibration"] = {"factor": cal_factor, "n": cal_n}
 
     return {
         "input": {

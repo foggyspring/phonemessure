@@ -211,6 +211,49 @@ def build_app() -> FastAPI:
         return {"feed": svc.feed.name if svc and svc.feed else "static",
                 "refreshed": len(q), "metals": sorted(q)}
 
+    @app.get("/api/calibration")
+    def calibration(_admin: dict = Depends(require_admin)) -> dict:
+        """Current time-correction factors learned from real cycle times."""
+        return {"factors": store.time_factors(), "samples": len(store.calibration_samples())}
+
+    @app.post("/api/calibration/actual")
+    def calibration_actual(body: dict, _admin: dict = Depends(require_admin)) -> dict:
+        """Record a real cycle time. Either supply quote_id (estimate + material
+        are looked up) or material + estimated_min explicitly; always actual_min.
+        """
+        try:
+            actual_min = float(body["actual_min"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=f"actual_min required: {exc}") from exc
+        if actual_min <= 0:
+            raise HTTPException(status_code=400, detail="actual_min must be > 0")
+
+        material = body.get("material")
+        estimated = body.get("estimated_min")
+        backend = body.get("backend")
+        quote_id = body.get("quote_id")
+        if quote_id:
+            q = store.get_quote(str(quote_id))
+            if q is None:
+                raise HTTPException(status_code=404, detail=f"quote '{quote_id}' not found")
+            material = q["input"]["material"]
+            # The stored per_part_min may already include a calibration factor;
+            # divide it out so we always calibrate against the *raw* model
+            # estimate (otherwise the factor double-applies and oscillates).
+            applied = (q["plan"].get("calibration") or {}).get("factor") or 1.0
+            estimated = q["plan"]["times"]["per_part_min"] / (applied or 1.0)
+            backend = q.get("estimator", {}).get("used")
+        if not material or not estimated:
+            raise HTTPException(status_code=400,
+                                detail="provide quote_id, or material + estimated_min")
+        try:
+            store.add_calibration_sample(str(material), float(estimated), actual_min,
+                                         backend=backend, quote_id=quote_id)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"ok": True, "material": material, "estimated_min": float(estimated),
+                "actual_min": actual_min, "factors": store.time_factors()}
+
     @app.get("/api/materials")
     def materials() -> dict:
         shop, sources = _effective_shop()
@@ -271,6 +314,7 @@ def build_app() -> FastAPI:
             payload = build_quote(
                 metrics, req, shop=eff_shop, mesh_stl=mesh_stl,
                 backend=str(p.get("backend", "auto")), price_sources=price_sources,
+                calibration_factors=store.time_factors(),
             )
         except QuoteError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
