@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cnc-quote-engine"
+version = "0.3.0"
+description = "Automatic CNC machining quote engine with an agentic AI copilot"
+requires-python = ">=3.11"
+readme = "cnc/README.md"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "reportlab",
+    "trimesh",
+    "shapely",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx", "ruff"]
+
+[tool.setuptools.packages.find]
+include = ["cnc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["cnc/tests"]
+markers = ["slow: long-running (fuzz/perf) tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# Pragmatic set: real bugs + obvious hygiene, not style nitpicks.
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",   # long lines (data tables / Chinese strings)
+    "E741",   # ambiguous var names (math: l, w, h)
+    "B008",   # FastAPI Depends()/File() defaults are idiomatic
+    "B904",   # raise-from in handlers is noisy here
+]
+
+[tool.ruff.lint.per-file-ignores]
+"cnc/tests/*" = ["E402", "F401"]
