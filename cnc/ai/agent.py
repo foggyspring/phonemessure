@@ -12,6 +12,37 @@ from .provider import get_provider
 from .tools import AgentContext, dispatch, get_tool, tool_schemas
 
 
+def analyze_part(ctx: AgentContext) -> dict:
+    """Full-AI analysis: run the standard read-only toolchain and synthesise a
+    structured report + recommendation. Deterministic so it works with the mock;
+    a real LLM can enrich the narration later."""
+    sections = []
+    for name in ("get_quote", "analyze_dfm", "compare_materials", "suggest_cheaper_material"):
+        res = dispatch(name, {}, ctx)
+        sections.append({"tool": name, "summary": res.get("summary", ""),
+                         "data": res.get("data"), "error": res.get("error")})
+    by = {s["tool"]: s for s in sections}
+
+    recs: list[str] = []
+    q = by["get_quote"].get("data") or {}
+    if isinstance(q, dict) and q.get("confidence"):
+        c = q["confidence"]
+        recs.append(f"报价置信度 {c['score']}/100（{c['level']}）"
+                    + ("；" + "、".join(c["reasons"]) if c.get("reasons") else ""))
+    sugg = by["suggest_cheaper_material"].get("data") or []
+    if sugg:
+        recs.append(f"如性能允许，换 {sugg[0]['label'].split(' ')[0]} 可省约 {sugg[0]['savings_pct']}%。")
+    dfm = by["analyze_dfm"].get("data") or []
+    risks = [d for d in dfm if d.get("severity") in ("high", "medium")]
+    if risks:
+        recs.append(f"注意 {len(risks)} 项可加工性风险：" + "、".join(d["title"] for d in risks[:3]))
+    else:
+        recs.append("未见明显可加工性风险。")
+
+    return {"sections": sections, "recommendation": " ".join(recs),
+            "provider": get_provider().name}
+
+
 def run_agent(message: str, ctx: AgentContext, *, history: list[dict] | None = None,
               max_steps: int = 4) -> dict:
     provider = get_provider()

@@ -673,8 +673,26 @@ function applyAIQuote(args) {
   toast("已按 AI 建议更新报价", "ok");
 }
 
+async function aiAnalyze() {
+  if (!state.file && !manualDims()) { toast("请先上传零件或填写尺寸", "err"); return; }
+  openAIPanel();
+  appendAIMsg("user", "🤖 全面分析这个零件");
+  const typing = appendAITyping();
+  try {
+    const fd = new FormData();
+    fd.append("params", JSON.stringify(buildParams(false)));
+    if (state.file) fd.append("file", state.file);
+    const d = await (await fetch("/api/ai/analyze", { method: "POST", body: fd })).json();
+    typing.remove();
+    (d.sections || []).forEach((s) =>
+      renderAIAction({ tool: s.tool, arguments: {}, summary: s.summary, error: s.error }));
+    if (d.recommendation) appendAIMsg("bot", "📋 综合建议：\n" + d.recommendation);
+  } catch (e) { typing.remove(); appendAIMsg("bot", "分析失败：" + e.message); }
+}
+
 function initAI() {
   $("ai-fab").addEventListener("click", openAIPanel);
+  $("ai-analyze-btn").addEventListener("click", aiAnalyze);
   $("ai-close").addEventListener("click", closeAIPanel);
   $("ai-send").addEventListener("click", sendAI);
   $("ai-text").addEventListener("keydown", (e) => {

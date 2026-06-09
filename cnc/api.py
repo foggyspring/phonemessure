@@ -253,6 +253,35 @@ def build_app() -> FastAPI:
         from .ai.tools import tool_schemas
         return {"tools": tool_schemas(is_admin=True)}
 
+    @app.post("/api/ai/analyze")
+    async def ai_analyze(
+        params: str = Form("{}"),
+        file: UploadFile | None = File(None),
+    ) -> JSONResponse:
+        from .ai.agent import analyze_part
+        from .ai.tools import AgentContext
+        try:
+            p = json.loads(params) if params else {}
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"bad params: {exc}") from exc
+        if not isinstance(p, dict):
+            raise HTTPException(status_code=400, detail="params must be an object")
+        metrics = mesh_stl = None
+        if file is not None:
+            data = _read_capped(file)
+            try:
+                metrics, extra = _metrics_from_request(data, file.filename, None)
+                if extra.get("preview_stl_b64"):
+                    mesh_stl = base64.b64decode(extra["preview_stl_b64"])
+                elif file.filename and file.filename.lower().endswith(".stl"):
+                    mesh_stl = data
+            except (GeometryError, KernelUnavailable):
+                metrics = None
+        shop, sources = _effective_shop()
+        ctx = AgentContext(shop=shop, metrics=metrics, mesh_stl=mesh_stl, params=p,
+                           price_sources=sources, calibration_factors=store.time_factors())
+        return JSONResponse(analyze_part(ctx))
+
     @app.get("/api/prices")
     def prices() -> dict:
         """Current effective material ¥/kg and where each came from."""

@@ -39,3 +39,11 @@ def test_history_is_threaded():
 def test_chitchat_no_tools():
     out = run_agent("你好", _ctx())
     assert not out["actions"] and "报价助手" in out["reply"]
+
+
+def test_analyze_part_report():
+    from cnc.ai.agent import analyze_part
+    r = analyze_part(_ctx())
+    tools = [s["tool"] for s in r["sections"]]
+    assert tools == ["get_quote", "analyze_dfm", "compare_materials", "suggest_cheaper_material"]
+    assert "置信度" in r["recommendation"]
