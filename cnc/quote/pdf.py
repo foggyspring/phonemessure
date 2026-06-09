@@ -297,13 +297,17 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
 
     # ---- Quantity price breaks ----
     flow.append(Paragraph("<b>阶梯报价 Quantity price breaks</b>", body))
-    tier_header = ["数量 Qty", "单价 Unit", "总价 Total"]
+    tier_header = ["数量 Qty", "单价 Unit", "总价 Total", "节省 Save"]
     tier_rows = [tier_header]
+    base_unit = quote["tiers"][0]["unit_price_cny"] if quote["tiers"] else 0
     for t in quote["tiers"]:
+        save = (f"-{100 * (1 - t['unit_price_cny'] / base_unit):.0f}%"
+                if base_unit > 0 and t["unit_price_cny"] < base_unit else "—")
         tier_rows.append(
-            [str(t["quantity"]), _money(t["unit_price_cny"], cur), _money(t["line_total_cny"], cur)]
+            [str(t["quantity"]), _money(t["unit_price_cny"], cur),
+             _money(t["line_total_cny"], cur), save]
         )
-    tiers = Table(tier_rows, colWidths=[54 * mm, 55 * mm, 55 * mm])
+    tiers = Table(tier_rows, colWidths=[40 * mm, 45 * mm, 45 * mm, 34 * mm])
     style = [
         ("FONTNAME", (0, 0), (-1, -1), _FONT),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
