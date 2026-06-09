@@ -381,3 +381,44 @@ table.hist .h-id { color: var(--muted2); font-family: ui-monospace, "SF Mono", m
 .conf-badge.low { color: #f85149; border-color: #f85149; background: rgba(248,81,73,.12); }
 .logistics { margin: 6px 0; line-height: 1.8; }
 .min-order { color: var(--warn); font-size: 12px; }
+
+/* ---------- AI copilot sidebar ---------- */
+.ai-fab {
+  position: fixed; right: 22px; bottom: 22px; z-index: 40;
+  display: flex; align-items: center; gap: 8px; padding: 11px 16px;
+  background: linear-gradient(135deg, var(--accent), #6f42c1); color: #fff;
+  border: none; border-radius: 26px; font-size: 14px; cursor: pointer;
+  box-shadow: 0 6px 22px rgba(47,129,247,.45); transition: transform .15s, box-shadow .15s;
+}
+.ai-fab:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(47,129,247,.55); }
+.ai-fab span { font-weight: 600; }
+.ai-panel {
+  position: fixed; top: 0; right: 0; height: 100vh; width: min(420px, 96vw); z-index: 50;
+  display: flex; flex-direction: column; background: var(--bg2);
+  border-left: 1px solid var(--border); box-shadow: -12px 0 40px rgba(0,0,0,.4);
+  transform: translateX(0); transition: transform .25s ease;
+}
+.ai-panel.hidden { transform: translateX(100%); pointer-events: none; }
+.ai-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(47,129,247,.12), transparent);
+}
+.ai-title { font-size: 15px; font-weight: 700; }
+.ai-status { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.ai-status.live { color: var(--accent2); }
+.ai-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.ai-msg { font-size: 13px; line-height: 1.6; padding: 10px 13px; border-radius: 12px; max-width: 92%; white-space: pre-wrap; word-break: break-word; }
+.ai-bot { background: var(--panel2); border: 1px solid var(--border); align-self: flex-start; }
+.ai-user { background: rgba(47,129,247,.18); border: 1px solid var(--accent); align-self: flex-end; }
+.ai-chip {
+  display: inline-block; margin: 5px 5px 0 0; padding: 4px 10px; font-size: 12px;
+  background: var(--panel3); color: var(--text); border: 1px solid var(--border2);
+  border-radius: 14px; cursor: pointer;
+}
+.ai-chip:hover { border-color: var(--accent); }
+.ai-input { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); }
+.ai-input textarea { resize: none; margin: 0; flex: 1; }
+.ai-input button { align-self: stretch; }
+.ai-foot { font-size: 10px; color: var(--muted2); padding: 0 14px 10px; }
+.ai-typing { color: var(--muted); font-size: 12px; }

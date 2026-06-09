@@ -545,6 +545,81 @@ function renderResult(p, isLive) {
   if (wasHidden) { resEl.classList.add("reveal"); resEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
 }
 
+// ───────────────────────── AI copilot ─────────────────────────
+const aiState = { history: [], busy: false };
+
+function openAIPanel() { $("ai-panel").classList.remove("hidden"); $("ai-text").focus(); }
+function closeAIPanel() { $("ai-panel").classList.add("hidden"); }
+
+async function loadAIStatus() {
+  try {
+    const s = await (await fetch("/api/ai/status")).json();
+    const el = $("ai-status");
+    el.textContent = s.live ? `已接入 ${s.provider}` : "离线模拟助手（上线接入真实 LLM）";
+    el.classList.toggle("live", !!s.live);
+  } catch { $("ai-status").textContent = "状态未知"; }
+}
+
+function appendAIMsg(role, text) {
+  const d = document.createElement("div");
+  d.className = "ai-msg " + (role === "user" ? "ai-user" : "ai-bot");
+  d.textContent = text;
+  $("ai-messages").appendChild(d);
+  $("ai-messages").scrollTop = $("ai-messages").scrollHeight;
+  return d;
+}
+
+function appendAITyping() {
+  const d = document.createElement("div");
+  d.className = "ai-msg ai-bot ai-typing";
+  d.textContent = "助手思考中…";
+  $("ai-messages").appendChild(d);
+  $("ai-messages").scrollTop = $("ai-messages").scrollHeight;
+  return d;
+}
+
+async function sendAI() {
+  const text = $("ai-text").value.trim();
+  if (!text || aiState.busy) return;
+  aiState.busy = true; $("ai-text").value = "";
+  appendAIMsg("user", text);
+  const typing = appendAITyping();
+  try {
+    const fd = new FormData();
+    fd.append("message", text);
+    fd.append("params", JSON.stringify(buildParams(false)));
+    fd.append("history", JSON.stringify(aiState.history));
+    if (state.file) fd.append("file", state.file);
+    const r = await fetch("/api/ai/chat", { method: "POST", headers: authHeaders(), body: fd });
+    const d = await r.json();
+    typing.remove();
+    (d.actions || []).forEach(renderAIAction);
+    if (d.reply) appendAIMsg("bot", d.reply);
+    aiState.history = d.history || aiState.history;
+  } catch (e) {
+    typing.remove(); appendAIMsg("bot", "网络错误：" + e.message);
+  } finally { aiState.busy = false; }
+}
+
+function renderAIAction(a) {
+  // simple line for now; rich action cards arrive in the next iteration
+  appendAIMsg("bot", `🔧 ${a.tool}：${a.summary}`);
+}
+
+function initAI() {
+  $("ai-fab").addEventListener("click", openAIPanel);
+  $("ai-close").addEventListener("click", closeAIPanel);
+  $("ai-send").addEventListener("click", sendAI);
+  $("ai-text").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAI(); }
+  });
+  $("ai-messages").addEventListener("click", (e) => {
+    const chip = e.target.closest(".ai-chip");
+    if (chip) { $("ai-text").value = chip.dataset.q; sendAI(); }
+  });
+  loadAIStatus();
+}
+
 // ───────────────────────── material comparison ─────────────────────────
 function renderCompare(p) {
   const el = $("compare-wrap");
@@ -919,6 +994,7 @@ function main() {
   loadHistory();
   loadBackends();
   loadMe();
+  initAI();
 
   $("add-hole").addEventListener("click", () => addHoleRow());
   $("quote-btn").addEventListener("click", () => requestQuote(true));

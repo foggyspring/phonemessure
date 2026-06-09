@@ -289,6 +289,32 @@
 
   <div id="toast-wrap" class="toast-wrap"></div>
 
+  <!-- ───────── AI copilot sidebar (Cursor-style) ───────── -->
+  <button id="ai-fab" class="ai-fab" title="AI 报价助手">🤖<span>AI 助手</span></button>
+  <aside id="ai-panel" class="ai-panel hidden" aria-label="AI copilot">
+    <div class="ai-head">
+      <div>
+        <div class="ai-title">🤖 AI 报价助手</div>
+        <div class="ai-status" id="ai-status">连接中…</div>
+      </div>
+      <button id="ai-close" class="icon-btn">✕</button>
+    </div>
+    <div class="ai-messages" id="ai-messages">
+      <div class="ai-msg ai-bot">
+        你好，我是报价助手。试试：<br>
+        <button class="ai-chip" data-q="这个零件用 SUS304 做 50 件多少钱？">SUS304 50件报价</button>
+        <button class="ai-chip" data-q="帮我分析这个零件">分析零件</button>
+        <button class="ai-chip" data-q="有没有更便宜的材料？">更省材料</button>
+        <button class="ai-chip" data-q="有什么可加工性风险？">DFM 风险</button>
+      </div>
+    </div>
+    <div class="ai-input">
+      <textarea id="ai-text" rows="2" placeholder="问我任何报价/分析问题，回车发送…"></textarea>
+      <button id="ai-send" class="primary small">发送</button>
+    </div>
+    <div class="ai-foot" id="ai-foot"></div>
+  </aside>
+
   <script type="module" src="/static/app.js"></script>
 </body>
 </html>
