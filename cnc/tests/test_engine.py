@@ -237,6 +237,12 @@ def test_material_suggestions_cheaper_same_category():
     assert all(x["unit_price_cny"] < base for x in s)
     # plastics shouldn't be suggested for a metal part
     assert all(k not in [x["key"] for x in s] for k in ["POM", "ABS", "PA6"])
+    # every suggestion carries a strength verdict; equivalent-strength picks rank first
+    assert all("strength_ok" in x for x in s)
+    oks = [x["strength_ok"] for x in s]
+    assert oks == sorted(oks, reverse=True)          # True (equivalent) before False (weaker)
+    weak = [x for x in s if x["strength_ok"] is False]
+    assert all(x.get("strength_hint") for x in weak)  # weaker subs explain the risk
 
 
 def test_qa_addons_raise_price_and_appear():

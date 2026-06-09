@@ -38,9 +38,24 @@ def suggest_materials(feat, material, finish, shop, qty, *, max_suggestions=3,
             continue
         if u < base * (1 - min_saving):
             out.append({"key": key, "label": mat.label, "unit_price_cny": round(u, 2),
-                        "savings_pct": round((base - u) / base * 100, 1)})
-    out.sort(key=lambda d: -d["savings_pct"])
+                        "savings_pct": round((base - u) / base * 100, 1),
+                        **_strength_note(material, mat)})
+    # prefer cheaper AND strength-equivalent picks; weaker subs sink in the list
+    out.sort(key=lambda d: (not d["strength_ok"], -d["savings_pct"]))
     return out[:max_suggestions]
+
+
+def _strength_note(base_mat, sub_mat) -> dict:
+    """Compare tensile strength so a cheaper material isn't blindly recommended
+    for a load-bearing part. ratio<0.9 ⇒ not a drop-in equivalent."""
+    b, s = base_mat.tensile_mpa, sub_mat.tensile_mpa
+    if not b or not s:
+        return {"strength_ok": True, "strength_ratio": None, "tensile_mpa": s or None}
+    ratio = s / b
+    return {"strength_ok": ratio >= 0.9, "strength_ratio": round(ratio, 2),
+            "tensile_mpa": s,
+            "strength_hint": None if ratio >= 0.9
+            else f"强度仅为原料 {ratio*100:.0f}%（{s:g} vs {b:g} MPa），承力件需校核"}
 
 
 def compare_all_materials(feat, finish, shop, qty) -> list[dict]:
@@ -58,6 +73,7 @@ def compare_all_materials(feat, finish, shop, qty) -> list[dict]:
             continue
         rows.append({"key": key, "label": mat.label, "category": mat.category,
                      "unit_price_cny": round(u, 2), "density_g_cm3": mat.density_g_cm3,
-                     "machinability": mat.machinability})
+                     "machinability": mat.machinability,
+                     "tensile_mpa": mat.tensile_mpa or None})
     rows.sort(key=lambda d: d["unit_price_cny"])
     return rows

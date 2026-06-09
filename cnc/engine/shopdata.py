@@ -25,6 +25,7 @@ class Material:
     price_cny_per_kg: float          # finished-stock ¥/kg (static fallback)
     machinability: float
     finish_ok: tuple[str, ...]
+    tensile_mpa: float = 0.0          # typical tensile strength, for equiv-strength substitution
     metal_basis: str | None = None   # exchange metal for live pricing (AL/CU/SS/…)
     form_factor: float = 0.0         # spot → finished bar/plate multiplier
     scrap_credit_frac: float = 0.0   # fraction of removed-metal value recovered
@@ -90,6 +91,7 @@ def load(data_dir: str | None = None) -> ShopData:
             price_cny_per_kg=v["price_cny_per_kg"],
             machinability=v["machinability"],
             finish_ok=tuple(v["finish_ok"]),
+            tensile_mpa=float(v.get("tensile_mpa", 0.0)),
             metal_basis=v.get("metal_basis"),
             form_factor=float(v.get("form_factor", 0.0)),
             scrap_credit_frac=float(v.get("scrap_credit_frac", 0.0)),
@@ -128,7 +130,7 @@ def load(data_dir: str | None = None) -> ShopData:
 # Fields an admin/supplier feed is allowed to override at runtime, per kind.
 _OVERRIDE_FIELDS = {
     "material": {"price_cny_per_kg", "machinability", "density_g_cm3",
-                 "form_factor", "scrap_credit_frac"},
+                 "form_factor", "scrap_credit_frac", "tensile_mpa"},
     "machine": {"rate_cny_per_hour", "base_mrr_cm3_min", "max_axes"},
     "finish": {"setup_cny", "per_dm2_cny", "min_cny"},
 }

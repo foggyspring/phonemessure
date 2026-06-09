@@ -774,7 +774,13 @@ function renderMaterialSuggestions(p) {
   const s = p.material_suggestions || [];
   if (!s.length) { el.innerHTML = ""; return; }
   el.innerHTML = `<span class="muted tiny">更省材料（如性能允许 if properties allow）：</span> ` +
-    s.map((m) => `<button class="suggest-chip" data-mat="${esc(m.key)}">${esc(m.label.split(" ")[0])} ↓${m.savings_pct}%</button>`).join(" ");
+    s.map((m) => {
+      const weak = m.strength_ok === false;
+      const title = weak ? ` title="${esc(m.strength_hint || "")}"` : "";
+      const warn = weak ? ' <span class="warn-mark">强度↓</span>' : "";
+      return `<button class="suggest-chip${weak ? " weak" : ""}" data-mat="${esc(m.key)}"${title}>` +
+             `${esc(m.label.split(" ")[0])} ↓${m.savings_pct}%${warn}</button>`;
+    }).join(" ");
   el.querySelectorAll(".suggest-chip").forEach((b) => b.addEventListener("click", () => {
     $("material").value = b.dataset.mat;
     updateMatPrice(); recolorMesh(b.dataset.mat); requestQuote(true);
