@@ -194,6 +194,15 @@ def clear_overrides(*, path: str | os.PathLike | None = None) -> None:
         conn.execute("DELETE FROM price_overrides")
 
 
+def clear_override(kind: str, key: str, field: str,
+                   *, path: str | os.PathLike | None = None) -> int:
+    """Revert one override back to the static default. Returns rows removed."""
+    with _connect(path) as conn:
+        cur = conn.execute("DELETE FROM price_overrides WHERE kind=? AND key=? AND field=?",
+                           (kind, key, field))
+        return cur.rowcount
+
+
 # ----------------------------------------------------------- auth / users --
 import secrets as _secrets
 

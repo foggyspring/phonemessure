@@ -132,3 +132,16 @@ def test_admin_actions_are_audited(client):
     assert "set_price" in actions and any(a.startswith("ai_approve") for a in actions)
     assert all(a["actor"] == "admin" for a in audit)
     assert client.get("/api/admin/audit").status_code == 401   # admin-only
+
+
+def test_price_revert_undoes_override(client):
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    base = client.get("/api/materials").json()["materials"]["AL6061"]["price_cny_per_kg"]
+    client.put("/api/admin/price", headers=h, json={"kind": "material", "key": "AL6061",
+                                                    "field": "price_cny_per_kg", "value": 99})
+    assert client.get("/api/materials").json()["materials"]["AL6061"]["price_cny_per_kg"] == 99
+    r = client.request("DELETE", "/api/admin/price", headers=h,
+                       json={"kind": "material", "key": "AL6061", "field": "price_cny_per_kg"})
+    assert r.json()["ok"] and r.json()["reverted"] == 1
+    assert client.get("/api/materials").json()["materials"]["AL6061"]["price_cny_per_kg"] == base
+    assert client.request("DELETE", "/api/admin/price", json={"scope": "all"}).status_code == 401

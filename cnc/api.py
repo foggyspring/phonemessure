@@ -601,6 +601,21 @@ def build_app() -> FastAPI:
     def overrides(_admin: dict = Depends(require_admin)) -> dict:
         return store.get_overrides()
 
+    @app.delete("/api/admin/price")
+    def revert_price(body: dict, _admin: dict = Depends(require_admin)) -> dict:
+        """Undo a price change: revert one override, or all when scope=all."""
+        if body.get("scope") == "all":
+            store.clear_overrides()
+            store.add_audit(_admin.get("u", "?"), "revert_price", "all")
+            return {"ok": True, "reverted": "all"}
+        try:
+            kind, key, field = str(body["kind"]), str(body["key"]), str(body["field"])
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=f"need kind/key/field or scope=all: {exc}") from exc
+        n = store.clear_override(kind, key, field)
+        store.add_audit(_admin.get("u", "?"), "revert_price", f"{kind}/{key}/{field} (n={n})")
+        return {"ok": True, "reverted": n}
+
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
         idx = STATIC_DIR / "index.html"
