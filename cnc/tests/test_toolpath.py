@@ -104,6 +104,7 @@ def test_oversized_part_falls_back_fast():
     """Perf guard: a part bigger than the inline-sim cap must fall back to
     analytic (found by fuzzing — a 10m inch-misread part took 25s otherwise)."""
     import time
+
     from cnc import estimators
     shop = load()
     big = trimesh.creation.box(extents=(1600, 900, 500))

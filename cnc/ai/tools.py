@@ -9,8 +9,8 @@ Read-only tools run freely. Write tools (price changes, calibration) are flagged
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from ..service import QuoteRequest, build_quote
 

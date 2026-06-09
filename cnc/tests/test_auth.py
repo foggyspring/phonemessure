@@ -58,6 +58,7 @@ def test_bearer_parsing():
 pytest.importorskip("httpx")
 warnings.filterwarnings("ignore")
 from starlette.testclient import TestClient  # noqa: E402
+
 from cnc.api import build_app  # noqa: E402
 
 

@@ -28,8 +28,8 @@ def test_curved_top_factor_exceeds_one():
 
 def test_finishing_uses_dropcutter_when_available():
     from cnc.engine import load
-    from cnc.geometry import analyze, metrics_from_stl_bytes
     from cnc.estimators import toolpath as tp
+    from cnc.geometry import analyze, metrics_from_stl_bytes
 
     shop = load()
     box = trimesh.creation.box(extents=(60, 60, 20))

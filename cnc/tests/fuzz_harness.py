@@ -4,15 +4,20 @@ NOT collected by pytest (no test_ prefix). Generates diverse + pathological
 parts (incl. inch units, adversarial customer strings), runs the full quote
 pipeline, and checks invariants (pricing, tax, weight, determinism, PDF). The
 permanent regression subset lives in test_invariants.py."""
-import math, random, time, traceback, sys
-import trimesh
-import numpy as np
+import math
+import random
+import sys
+import time
+import traceback
 
-from cnc.engine import load
-from cnc.geometry import analyze, metrics_from_stl_bytes, Hole, GeometryError
+import numpy as np
+import trimesh
+
 from cnc import estimators
 from cnc.engine import costing as costing_mod
-from cnc.service import build_quote, QuoteRequest, QuoteError
+from cnc.engine import load
+from cnc.geometry import GeometryError, Hole, analyze, metrics_from_stl_bytes
+from cnc.service import QuoteError, QuoteRequest, build_quote
 
 shop = load()
 MATS = list(shop.materials)
@@ -195,7 +200,7 @@ def run(n=100, seed=12345):
                 pdf=build_quote_pdf(payload)
                 if pdf[:5]!=b"%PDF-": problems.append((case,"bad PDF"))
             ok+=1
-        except (QuoteError,) as e:
+        except QuoteError as e:
             # an inch-scaled pathological part may legitimately exceed the
             # machinable envelope — that rejection is expected, not a bug.
             if "范围" in str(e) or "envelope" in str(e):

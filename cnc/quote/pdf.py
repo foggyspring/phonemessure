@@ -8,9 +8,8 @@ manufacturability notes/warnings.
 from __future__ import annotations
 
 import io
-from datetime import date
-
 import os
+from datetime import date
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4

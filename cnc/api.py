@@ -15,6 +15,7 @@ Celery worker instead of doing it inline.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
@@ -27,13 +28,13 @@ from fastapi.staticfiles import StaticFiles
 
 from . import auth, store
 from .engine import ShopData, apply_overrides, load
-from .pricing import apply_market_prices, get_price_service
 from .geometry import GeometryError, MeshMetrics
 from .geometry.parser import (
     KernelUnavailable,
     metrics_from_dims,
     parse_bytes,
 )
+from .pricing import apply_market_prices, get_price_service
 from .quote import build_quote_pdf
 from .service import QuoteError, QuoteRequest, build_quote
 

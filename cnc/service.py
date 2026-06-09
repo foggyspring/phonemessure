@@ -68,7 +68,7 @@ class QuoteRequest:
     customer: str = ""         # optional customer / project for the quote header
 
     @classmethod
-    def from_payload(cls, p: dict) -> "QuoteRequest":
+    def from_payload(cls, p: dict) -> QuoteRequest:
         holes = [
             Hole(
                 diameter_mm=float(h["diameter_mm"]),

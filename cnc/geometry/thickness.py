@@ -80,7 +80,7 @@ def estimate_min_wall_mm(
 
     thick: list[float] = []
     t0 = time.time()
-    for o, d in zip(origins, dirs):
+    for o, d in zip(origins, dirs, strict=False):
         if time.time() - t0 > time_budget_s:
             break
         dist = _first_hit_distance(o, d, v0, e1, e2, np)

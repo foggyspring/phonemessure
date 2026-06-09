@@ -86,6 +86,7 @@ def test_valid_quote_round_trip_200():
 
 def test_db_schema_version_stamped(tmp_path):
     import sqlite3
+
     from cnc import store
     db = tmp_path / "v.db"
     store.count_users(path=db)                      # forces connect → migrate

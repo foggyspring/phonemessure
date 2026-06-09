@@ -67,7 +67,7 @@ class MeshMetrics:
         ratio = self.area_mm2 / box
         return max(0.0, min(1.0, (ratio - 1.0) / 4.0))
 
-    def scaled(self, s: float) -> "MeshMetrics":
+    def scaled(self, s: float) -> MeshMetrics:
         """Return a copy scaled by linear factor *s* (e.g. 25.4 for inch→mm)."""
         return MeshMetrics(
             triangles=self.triangles,

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-from cnc.geometry import metrics_from_stl_bytes, metrics_from_dims
+from cnc.geometry import metrics_from_dims, metrics_from_stl_bytes
 from cnc.tests.fixtures import cube_stl
 
 

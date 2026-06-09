@@ -15,7 +15,7 @@ import json
 import os
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 _DEFAULT_DB = Path(__file__).resolve().parent / "data" / "quotes.db"
@@ -113,7 +113,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 # ---------------------------------------------------------------- quotes ----

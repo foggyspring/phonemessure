@@ -84,6 +84,7 @@ def test_lead_time_options_and_selection():
 def test_economy_floor_never_below_cost():
     # force a tiny margin so the economy discount would otherwise dip below cost
     import dataclasses
+
     from cnc.engine import load
     shop = load()
     shop = dataclasses.replace(shop, business={**shop.business, "margin": 0.02})
@@ -202,6 +203,7 @@ def test_tolerance_classes_scale_price_and_inspection():
 
 def test_surface_roughness_scales_finishing():
     import trimesh
+
     from cnc.geometry import metrics_from_stl_bytes
     # a sphere has real finishing area to scale
     sb = trimesh.creation.icosphere(subdivisions=3, radius=25).export(file_type="stl")
@@ -243,6 +245,7 @@ def test_currency_fx_block():
 
 def test_confidence_score_present_and_ranked():
     import trimesh
+
     from cnc.geometry import metrics_from_stl_bytes
     cb = cube_stl(50.0)
     simple = build_quote(metrics_from_stl_bytes(cb), QuoteRequest(material="AL6061", quantity=1),

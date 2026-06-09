@@ -15,7 +15,6 @@ be defended to a customer or tuned by an estimator.
 """
 from __future__ import annotations
 
-import math
 from dataclasses import asdict, dataclass, field
 
 from ..geometry.features import FeatureSet

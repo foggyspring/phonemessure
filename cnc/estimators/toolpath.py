@@ -156,7 +156,6 @@ def _stock_rect(bounds, margin: float):
 # --------------------------------------------------------------------------
 def _simulate_roughing(mesh, bounds, margin, cut, tools) -> tuple[float, dict]:
     stock = _stock_rect(bounds, margin)
-    stock_area = stock.area
     stepdown = max(cut["rough_stepdown_mm"], 0.1)
     stepover = max(tools["rough_endmill_d_mm"] * tools["rough_stepover_frac"], 0.5)
     feed = cut["rough_feed_mm_min"]
@@ -281,6 +280,7 @@ def load_mesh(stl_bytes: bytes, scale: float = 1.0):
     """
     try:
         import io
+
         import trimesh
     except Exception as exc:  # pragma: no cover
         raise ToolpathUnavailable(f"trimesh not installed: {exc}") from exc
