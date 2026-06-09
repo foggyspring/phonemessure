@@ -150,6 +150,41 @@ def _t_list_materials(args: dict, ctx: AgentContext) -> dict:
     return {"summary": s, "data": mats}
 
 
+# ---------------------------------------------------------- write tools ----
+def _t_set_price(args: dict, ctx: AgentContext) -> dict:
+    from .. import store
+    kind = str(args.get("kind", "material"))
+    key = str(args.get("key", ""))
+    field = str(args.get("field", "price_cny_per_kg"))
+    try:
+        value = float(args.get("value"))
+    except (TypeError, ValueError):
+        return {"summary": "价格数值无效。", "data": None, "error": "bad_value"}
+    catalog = ctx.shop.materials if kind == "material" else ctx.shop.machines if kind == "machine" else None
+    if catalog is None or key not in catalog:
+        return {"summary": f"未知{kind} '{key}'。", "data": None, "error": "unknown_key"}
+    if not (0 < value < 1_000_000):
+        return {"summary": "价格超出合理范围。", "data": None, "error": "out_of_range"}
+    store.set_override(kind, key, field, value)
+    return {"summary": f"已将 {key} 的 {field} 设为 ¥{value:g}。", "data": {"key": key, "value": value}}
+
+
+def _t_record_actual_time(args: dict, ctx: AgentContext) -> dict:
+    from .. import store
+    material = str(args.get("material", "")) or ctx.params.get("material", "")
+    try:
+        est = float(args.get("estimated_min"))
+        act = float(args.get("actual_min"))
+    except (TypeError, ValueError):
+        return {"summary": "需要 estimated_min 和 actual_min 数值。", "data": None, "error": "bad_value"}
+    if est <= 0 or act <= 0:
+        return {"summary": "工时必须为正数。", "data": None, "error": "bad_value"}
+    store.add_calibration_sample(material, est, act, backend=args.get("backend"))
+    f = store.time_factors().get(material)
+    return {"summary": f"已记录 {material} 实测工时。当前校准因子：{f or '样本不足'}。",
+            "data": {"material": material, "factors": store.time_factors()}}
+
+
 def register_builtin_tools() -> None:
     register(Tool("get_quote", "对当前零件按可选材料/数量/公差/表面/交期估价并返回单价、含税总价、交期、置信度。",
                   {"type": "object", "properties": {
@@ -166,6 +201,17 @@ def register_builtin_tools() -> None:
                   {"type": "object", "properties": {}}, _t_analyze_dfm))
     register(Tool("list_materials", "列出可选材料及当日单价。",
                   {"type": "object", "properties": {}}, _t_list_materials))
+    register(Tool("set_price", "修改某材料/机床的单价或时租（需管理员审批后执行）。",
+                  {"type": "object", "properties": {
+                      "kind": {"type": "string", "enum": ["material", "machine"]},
+                      "key": {"type": "string"}, "field": {"type": "string"},
+                      "value": {"type": "number"}}, "required": ["key", "value"]},
+                  _t_set_price, requires_approval=True, admin=True))
+    register(Tool("record_actual_time", "录入某材料的实测单件工时用于反标定（需管理员审批）。",
+                  {"type": "object", "properties": {
+                      "material": {"type": "string"}, "estimated_min": {"type": "number"},
+                      "actual_min": {"type": "number"}}, "required": ["actual_min"]},
+                  _t_record_actual_time, requires_approval=True, admin=True))
 
 
 register_builtin_tools()

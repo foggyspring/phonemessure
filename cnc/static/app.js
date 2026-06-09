@@ -595,6 +595,7 @@ async function sendAI() {
     typing.remove();
     (d.actions || []).forEach(renderAIAction);
     if (d.reply) appendAIMsg("bot", d.reply);
+    if (d.pending) renderAIPending(d.pending);
     aiState.history = d.history || aiState.history;
   } catch (e) {
     typing.remove(); appendAIMsg("bot", "网络错误：" + e.message);
@@ -626,6 +627,39 @@ function renderAIAction(a) {
   }
   $("ai-messages").appendChild(card);
   $("ai-messages").scrollTop = $("ai-messages").scrollHeight;
+}
+
+function renderAIPending(pending) {
+  const m = AI_TOOL_META[pending.tool] || { ico: "✏️", label: pending.tool };
+  const args = Object.entries(pending.arguments || {}).map(([k, v]) => `${k}=${v}`).join(" ");
+  const card = document.createElement("div");
+  card.className = "ai-action pending";
+  card.innerHTML =
+    `<div class="ai-action-head">${m.ico} <b>待确认：${esc(m.label)}</b></div>` +
+    `<div class="ai-action-body">${esc(pending.description || "")}<br><span class="ai-args">${esc(args)}</span></div>`;
+  const row = document.createElement("div");
+  row.className = "ai-approve-row";
+  const ok = document.createElement("button"); ok.className = "ai-confirm"; ok.textContent = "✓ 确认执行";
+  const no = document.createElement("button"); no.className = "ai-reject"; no.textContent = "✕ 取消";
+  ok.addEventListener("click", () => { approveAI(pending); card.remove(); });
+  no.addEventListener("click", () => { card.remove(); appendAIMsg("bot", "已取消该操作。"); });
+  row.append(ok, no); card.appendChild(row);
+  $("ai-messages").appendChild(card);
+  $("ai-messages").scrollTop = $("ai-messages").scrollHeight;
+}
+
+async function approveAI(pending) {
+  if (!state.token) { toast("写操作需管理员登录", "err"); openLogin(); return; }
+  try {
+    const r = await fetch("/api/ai/approve", {
+      method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ tool: pending.tool, arguments: pending.arguments, params: buildParams(false) }),
+    });
+    if (r.status === 401 || r.status === 403) { logout(); openLogin(); return; }
+    const d = await r.json();
+    appendAIMsg("bot", (d.ok ? "✅ " : "⚠ ") + (d.summary || (d.ok ? "已执行" : "执行失败")));
+    if (d.ok) { loadShop(); if (state.hasQuoted) requestQuote(false); }
+  } catch (e) { appendAIMsg("bot", "网络错误：" + e.message); }
 }
 
 function applyAIQuote(args) {

@@ -31,12 +31,14 @@ def run_agent(message: str, ctx: AgentContext, *, history: list[dict] | None = N
 
         for tc in turn.tool_calls:
             tool = get_tool(tc.name)
-            if tool is not None and tool.requires_approval and not ctx.is_admin:
-                # surface as a pending action instead of executing
+            if tool is not None and tool.requires_approval:
+                # Intervention Point: never auto-execute a write — surface it for
+                # explicit approval (and it needs an admin to confirm).
                 pending = {"tool": tc.name, "arguments": tc.arguments,
-                           "description": tool.description}
-                return {"reply": "该操作需要确认/管理员权限，请审批后执行。",
-                        "actions": actions, "pending": pending,
+                           "description": tool.description, "admin": tool.admin}
+                msg = ("请在下方确认该写操作后执行。" if ctx.is_admin
+                       else "该操作会修改数据，需管理员登录并确认后才能执行。")
+                return {"reply": msg, "actions": actions, "pending": pending,
                         "provider": provider.name, "history": convo}
             result = dispatch(tc.name, tc.arguments, ctx)
             actions.append({"tool": tc.name, "arguments": tc.arguments,

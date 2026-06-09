@@ -234,6 +234,25 @@ def build_app() -> FastAPI:
                            is_admin=is_admin)
         return JSONResponse(run_agent(str(message), ctx, history=hist))
 
+    @app.post("/api/ai/approve")
+    def ai_approve(body: dict, _admin: dict = Depends(require_admin)) -> dict:
+        """Execute an AI-proposed write action after explicit admin approval."""
+        from .ai.tools import AgentContext, dispatch, get_tool
+        tool = str(body.get("tool", ""))
+        t = get_tool(tool)
+        if t is None or not t.requires_approval:
+            raise HTTPException(status_code=400, detail="not an approvable tool")
+        shop, _ = _effective_shop()
+        ctx = AgentContext(shop=shop, params=body.get("params") or {}, is_admin=True)
+        res = dispatch(tool, body.get("arguments") or {}, ctx)
+        return {"ok": res.get("error") is None, "summary": res.get("summary", ""),
+                "error": res.get("error"), "data": res.get("data")}
+
+    @app.get("/api/ai/tools")
+    def ai_tools() -> dict:
+        from .ai.tools import tool_schemas
+        return {"tools": tool_schemas(is_admin=True)}
+
     @app.get("/api/prices")
     def prices() -> dict:
         """Current effective material ¥/kg and where each came from."""
