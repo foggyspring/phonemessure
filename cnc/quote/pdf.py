@@ -211,6 +211,10 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
         )
     )
     flow.append(cb)
+    if quote.get("addons"):
+        names = "、".join(a["label"] for a in quote["addons"])
+        flow.append(Spacer(1, 2 * mm))
+        flow.append(Paragraph(f"含质检/认证增项 QA add-ons: {names}", small))
     flow.append(Spacer(1, 3 * mm))
     flow.append(
         Paragraph(

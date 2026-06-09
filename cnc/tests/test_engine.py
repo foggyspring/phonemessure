@@ -220,3 +220,14 @@ def test_material_suggestions_cheaper_same_category():
     assert all(x["unit_price_cny"] < base for x in s)
     # plastics shouldn't be suggested for a metal part
     assert all(k not in [x["key"] for x in s] for k in ["POM", "ABS", "PA6"])
+
+
+def test_qa_addons_raise_price_and_appear():
+    m = _metrics()
+    base = build_quote(m, QuoteRequest(material="AL6061", quantity=10))
+    add = build_quote(m, QuoteRequest(material="AL6061", quantity=10,
+                                      addons=["material_cert", "dim_report"]))
+    assert add["quote"]["requested"]["unit_price_cny"] > base["quote"]["requested"]["unit_price_cny"]
+    assert {a["key"] for a in add["quote"]["addons"]} == {"material_cert", "dim_report"}
+    # per-part addon (dim_report) means the gap is bigger than just amortized batch
+    assert not base["quote"]["addons"]

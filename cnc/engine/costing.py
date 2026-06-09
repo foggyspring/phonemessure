@@ -62,6 +62,7 @@ class Quote:
     scrap_credit_cny: float = 0.0
     lead_time: str = "standard"
     lead_time_options: list = field(default_factory=list)
+    addons: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         # Tax is charged on the requested line total; the grand total is what
@@ -81,6 +82,7 @@ class Quote:
             "rush": self.rush,
             "lead_time": self.lead_time,
             "lead_time_options": self.lead_time_options,
+            "addons": self.addons,
             "currency": self.currency,
             "machine_rate_cny_h": self.machine_rate_cny_h,
             "tax_rate": self.tax_rate,
@@ -121,9 +123,10 @@ def _breakdown(
     finish_var_cny: float,
     one_time_total_cny: float,
     margin: float,
+    addon_per_part_cny: float = 0.0,
 ) -> CostBreakdown:
     amortized = one_time_total_cny / qty if qty > 0 else one_time_total_cny
-    unit_cost = material_cny + machining_cny + finish_var_cny + amortized
+    unit_cost = material_cny + machining_cny + finish_var_cny + amortized + addon_per_part_cny
     unit_price = unit_cost * (1.0 + margin)
     return CostBreakdown(
         quantity=qty,
@@ -149,10 +152,18 @@ def price(
     lead_time: str | None = None,
     tolerance_margin_bonus: float | None = None,
     tolerance_label: str | None = None,
+    addons: list[dict] | None = None,
 ) -> Quote:
     biz = shop.business
     margin = float(biz["margin"])
     notes: list[str] = []
+
+    # Optional QA / certification add-ons: batch cost (amortized) + per-part cost.
+    addons = addons or []
+    addon_batch = sum(float(a.get("batch_cny", 0)) for a in addons)
+    addon_per_part = sum(float(a.get("per_part_cny", 0)) for a in addons)
+    if addons:
+        notes.append("增项：" + "、".join(a["label"] for a in addons))
 
     bonus = (tolerance_margin_bonus if tolerance_margin_bonus is not None
              else (float(biz["tight_tolerance_margin_bonus"]) if tight_tolerance else 0.0))
@@ -185,7 +196,7 @@ def price(
         return finish_setup_cny
 
     def order_one_time(qty: int) -> float:
-        return programming_cny + finish_one_time(qty)
+        return programming_cny + finish_one_time(qty) + addon_batch
 
     rq = max(1, quantity)
     if finish.min_cny > 0 and finish_setup_cny + finish_var_cny * rq < finish.min_cny:
@@ -207,7 +218,7 @@ def price(
 
     def make(qty: int, factor: float = lead_factor) -> CostBreakdown:
         b = _breakdown(qty, material_cny, machining_cny, finish_var_cny,
-                       order_one_time(qty), margin)
+                       order_one_time(qty), margin, addon_per_part_cny=addon_per_part)
         if factor != 1.0:
             priced = b.unit_price_cny * factor
             if factor < 1.0:                       # economy discount never below cost
@@ -240,6 +251,9 @@ def price(
         rush=bool(rush),
         lead_time=sel["key"],
         lead_time_options=lead_time_options,
+        addons=[{"key": a["key"], "label": a["label"],
+                 "batch_cny": float(a.get("batch_cny", 0)),
+                 "per_part_cny": float(a.get("per_part_cny", 0))} for a in addons],
         currency=str(biz["currency"]),
         machine_rate_cny_h=plan.machine.rate_cny_per_hour,
         notes=notes,

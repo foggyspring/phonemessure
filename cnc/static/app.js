@@ -362,6 +362,7 @@ function buildParams(save) {
     machine: $("machine").value || null,
     tolerance: $("tolerance").value,
     surface_finish: $("surface_finish").value,
+    addons: [...document.querySelectorAll("#addons input:checked")].map((c) => c.dataset.addon),
     requires_5axis: $("fiveaxis").checked,
     lead_time: state.leadTime,
     backend: $("backend").value,
@@ -890,6 +891,7 @@ function main() {
   ["quantity", "finish", "machine", "minwall", "tolerance", "surface_finish", "fiveaxis", "backend", "units", "customer"].forEach((id) =>
     $(id).addEventListener("change", scheduleLiveQuote));
   $("material").addEventListener("change", scheduleLiveQuote);
+  $("addons").addEventListener("change", scheduleLiveQuote);
   ["m-l", "m-w", "m-h", "m-v"].forEach((id) =>
     $(id).addEventListener("input", () => { refreshQuoteEnabled(); scheduleLiveQuote(); }));
 }

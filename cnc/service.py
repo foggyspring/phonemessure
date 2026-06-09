@@ -28,6 +28,7 @@ class QuoteRequest:
     tight_tolerance: bool = False
     tolerance: str | None = None     # 标准/精密/超精 tolerance class key
     surface_finish: str | None = None  # 表面粗糙度 Ra class key
+    addons: list[str] = field(default_factory=list)  # QA/cert add-on keys
     requires_5axis: bool = False
     min_wall_mm: float | None = None
     rush: bool = False
@@ -57,6 +58,7 @@ class QuoteRequest:
             tight_tolerance=bool(p.get("tight_tolerance", False)),
             tolerance=(str(p["tolerance"]) if p.get("tolerance") else None),
             surface_finish=(str(p["surface_finish"]) if p.get("surface_finish") else None),
+            addons=[str(a) for a in (p.get("addons") or [])],
             requires_5axis=bool(p.get("requires_5axis", False)),
             min_wall_mm=(float(p["min_wall_mm"]) if p.get("min_wall_mm") else None),
             rush=bool(p.get("rush", False)),
@@ -204,6 +206,7 @@ def build_quote(
         lead_time=req.lead_time,
         tolerance_margin_bonus=(float(tol["margin_bonus"]) if tol else None),
         tolerance_label=(tol["label"] if tol else None),
+        addons=[a for a in (shop.business.get("addons") or []) if a["key"] in req.addons],
     )
 
     dims = metrics.dims_mm

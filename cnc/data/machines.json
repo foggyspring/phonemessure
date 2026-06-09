@@ -56,6 +56,12 @@
       {"key": "mirror",   "label": "镜面 Ra0.8", "ra_um": 0.8, "finish_factor": 2.0}
     ],
     "default_surface": "standard",
+    "addons": [
+      {"key": "material_cert", "label": "材料证明书 Material cert", "batch_cny": 80.0, "per_part_cny": 0.0},
+      {"key": "coc",          "label": "合格证 CoC",            "batch_cny": 40.0, "per_part_cny": 0.0},
+      {"key": "dim_report",   "label": "全尺寸检测报告 Dim report","batch_cny": 120.0, "per_part_cny": 8.0},
+      {"key": "first_article","label": "首件检测报告 FAI",        "batch_cny": 150.0, "per_part_cny": 0.0}
+    ],
     "quantity_breaks": [1, 5, 10, 25, 50, 100],
     "tax_rate": 0.13,
     "tax_label": "增值税 VAT",
