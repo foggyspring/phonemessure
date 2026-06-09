@@ -219,9 +219,13 @@
     <div class="card">
       <div class="tiers-head">
         <h3>阶梯报价 Quantity breaks</h3>
-        <button id="pdf-btn" class="primary small">⬇ 下载 PDF 报价单</button>
+        <div style="display:flex;gap:8px">
+          <button id="compare-btn" class="ghost-btn">⇄ 比较材料</button>
+          <button id="pdf-btn" class="primary small">⬇ 下载 PDF 报价单</button>
+        </div>
       </div>
       <table class="tiers" id="tier-table"></table>
+      <div id="compare-wrap"></div>
     </div>
 
     <div class="card" id="warn-card">

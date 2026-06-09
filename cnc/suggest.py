@@ -41,3 +41,23 @@ def suggest_materials(feat, material, finish, shop, qty, *, max_suggestions=3,
                         "savings_pct": round((base - u) / base * 100, 1)})
     out.sort(key=lambda d: -d["savings_pct"])
     return out[:max_suggestions]
+
+
+def compare_all_materials(feat, finish, shop, qty) -> list[dict]:
+    """Full what-if table: every material that supports the finish, priced
+    (analytic) with its key properties, cheapest first."""
+    finish_key = getattr(finish, "key", "none")
+    rows: list[dict] = []
+    for key, mat in shop.materials.items():
+        if finish_key != "none" and finish_key not in mat.finish_ok:
+            continue
+        try:
+            plan = capp.plan(feat, mat, shop)
+            u = costing_mod.price(plan, mat, finish, shop, quantity=qty).requested.unit_price_cny
+        except Exception:
+            continue
+        rows.append({"key": key, "label": mat.label, "category": mat.category,
+                     "unit_price_cny": round(u, 2), "density_g_cm3": mat.density_g_cm3,
+                     "machinability": mat.machinability})
+    rows.sort(key=lambda d: d["unit_price_cny"])
+    return rows

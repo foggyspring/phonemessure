@@ -14,7 +14,7 @@ from . import estimators
 from .calibration import factor_for
 from .confidence import score_quote
 from .dfm import analyze_dfm
-from .suggest import suggest_materials
+from .suggest import compare_all_materials, suggest_materials
 
 
 def _logistics(shop: ShopData, plan, material, qty: int, quote) -> dict:
@@ -113,6 +113,7 @@ def build_quote(
     backend: str = "auto",
     price_sources: dict | None = None,
     calibration_factors: dict | None = None,
+    compare: bool = False,
 ) -> dict:
     shop = shop or load()
 
@@ -301,6 +302,8 @@ def build_quote(
         "material_suggestions": suggest_materials(feat, material, finish, shop, req.quantity),
         "fx": _resolve_fx(shop, req.currency),
         "logistics": _logistics(shop, plan, material, req.quantity, quote),
+        "material_comparison": (compare_all_materials(feat, finish, shop, req.quantity)
+                                if compare else None),
         "confidence": score_quote(
             backend=backend_info.get("used", ""), complexity=metrics.complexity,
             holes_auto=holes_auto, wall_auto=auto_wall is not None,

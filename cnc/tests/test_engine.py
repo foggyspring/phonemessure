@@ -263,3 +263,15 @@ def test_logistics_weight_and_min_order():
     assert fifty["shipping_cny"] > one["shipping_cny"]
     assert one["meets_min_order"] is False and one["shortfall_cny"] > 0
     assert fifty["meets_min_order"] is True
+
+
+def test_material_comparison_on_demand():
+    m = _metrics()
+    off = build_quote(m, QuoteRequest(material="AL6061", quantity=5))
+    assert off["material_comparison"] is None        # not computed unless requested
+    on = build_quote(m, QuoteRequest(material="AL6061", quantity=5), compare=True)
+    rows = on["material_comparison"]
+    assert len(rows) >= 3
+    prices = [r["unit_price_cny"] for r in rows]
+    assert prices == sorted(prices)                  # cheapest first
+    assert all({"key", "density_g_cm3", "machinability"} <= set(r) for r in rows)

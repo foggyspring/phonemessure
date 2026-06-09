@@ -314,7 +314,7 @@ def build_app() -> FastAPI:
             payload = build_quote(
                 metrics, req, shop=eff_shop, mesh_stl=mesh_stl,
                 backend=str(p.get("backend", "auto")), price_sources=price_sources,
-                calibration_factors=store.time_factors(),
+                calibration_factors=store.time_factors(), compare=bool(p.get("compare")),
             )
         except QuoteError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

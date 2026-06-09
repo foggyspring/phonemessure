@@ -17,6 +17,7 @@ const state = {
   user: null,
   leadTime: null,   // selected lead-time tier key (null → standard default)
   fx: { rate: 1, symbol: "¥", currency: "CNY" },
+  compare: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -364,6 +365,7 @@ function buildParams(save) {
     tolerance: $("tolerance").value,
     surface_finish: $("surface_finish").value,
     currency: $("currency").value,
+    compare: state.compare || false,
     addons: [...document.querySelectorAll("#addons input:checked")].map((c) => c.dataset.addon),
     requires_5axis: $("fiveaxis").checked,
     lead_time: state.leadTime,
@@ -486,6 +488,7 @@ function renderResult(p, isLive) {
     ` · 交期 ${q.lead_days} 天${valid}`;
   renderConfidence(p);
   renderLogistics(p);
+  renderCompare(p);
   renderLeadOptions(q, isLive);
   renderMaterialSuggestions(p);
   const psrc = p.input?.price_source;
@@ -540,6 +543,21 @@ function renderResult(p, isLive) {
   const wasHidden = resEl.classList.contains("hidden");
   resEl.classList.remove("hidden");
   if (wasHidden) { resEl.classList.add("reveal"); resEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
+}
+
+// ───────────────────────── material comparison ─────────────────────────
+function renderCompare(p) {
+  const el = $("compare-wrap");
+  const rows = p.material_comparison;
+  state.compare = false;                 // one-shot; don't slow later quotes
+  if (!rows) { el.innerHTML = ""; return; }
+  const cur = (state.fx || {}).symbol || "¥";
+  const cheapest = rows[0] && rows[0].key;
+  el.innerHTML = `<div class="lead-title" style="margin-top:12px">材料对比 Material comparison（按单价）</div>` +
+    `<table class="tiers"><tr><th>材料</th><th>单价</th><th>密度</th><th>可加工性</th></tr>` +
+    rows.map((r) => `<tr${r.key === $("material").value ? ' class="active"' : ""}>
+      <td>${esc(r.label.split(" ")[0])}</td><td>${money(r.unit_price_cny)}</td>
+      <td>${r.density_g_cm3}</td><td>×${r.machinability}</td></tr>`).join("") + `</table>`;
 }
 
 // ───────────────────────── logistics ─────────────────────────
@@ -904,6 +922,7 @@ function main() {
 
   $("add-hole").addEventListener("click", () => addHoleRow());
   $("quote-btn").addEventListener("click", () => requestQuote(true));
+  $("compare-btn").addEventListener("click", () => { state.compare = true; requestQuote(true); });
   $("pdf-btn").addEventListener("click", downloadPdf);
   $("hist-refresh").addEventListener("click", loadHistory);
   $("admin-btn").addEventListener("click", openAdmin);
