@@ -187,6 +187,15 @@ def build_app() -> FastAPI:
         from . import estimators
         return {"available": estimators.backend_status(), "options": list(estimators.BACKENDS)}
 
+    @app.get("/api/ai/status")
+    def ai_status() -> dict:
+        from .ai import get_provider
+        p = get_provider()
+        return {"provider": p.name, "available": p.available,
+                "live": p.name != "mock",
+                "note": ("使用离线模拟助手；上线接入真实 LLM 后自动切换。"
+                         if p.name == "mock" else "已接入真实 LLM。")}
+
     @app.get("/api/prices")
     def prices() -> dict:
         """Current effective material ¥/kg and where each came from."""
