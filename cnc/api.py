@@ -17,10 +17,13 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import time
 from collections import defaultdict, deque
 from pathlib import Path
+
+log = logging.getLogger("cnc")
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -67,11 +70,11 @@ def _seed_admin() -> None:
         pw = os.environ.get("CNC_ADMIN_PASSWORD")
         if not pw:
             pw = "admin"
-            print("  ⚠ CNC_ADMIN_PASSWORD not set — seeding admin/admin; "
-                  "set it (and change the password) before exposing this.", flush=True)
+            log.warning("CNC_ADMIN_PASSWORD not set — seeding admin/admin; "
+                        "set it (and change the password) before exposing this.")
         store.create_user(user, auth.hash_password(pw), role="admin")
     except Exception as exc:  # never block startup on seeding
-        print(f"  auth seed skipped: {exc}", flush=True)
+        log.warning("auth seed skipped: %s", exc)
 
 
 # Simple in-memory login throttle (per client IP) to blunt brute-forcing.

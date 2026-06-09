@@ -14,6 +14,10 @@ to drop in its own tool library and post-processor.
 """
 from __future__ import annotations
 
+import logging
+
+_log=logging.getLogger('cnc.freecad')
+
 import os
 import shutil
 import subprocess
@@ -94,7 +98,7 @@ try:
     ok = build_and_post()
 except Exception as e:
     sys.stderr.write("FC-CAM-ERROR: %s\n" % e)
-print("FC-CAM-DONE %s" % json.dumps({"ok": bool(ok)}))
+_log.debug("FC-CAM-DONE %s" % json.dumps({"ok": bool(ok)}))
 '''
 
 

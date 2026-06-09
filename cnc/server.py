@@ -11,6 +11,8 @@ in front for TLS in production.
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 
 import uvicorn
 
@@ -22,7 +24,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--reload", action="store_true", help="dev autoreload")
     args = p.parse_args(argv)
 
-    print(f"\n  CNC quote engine →  http://{args.host}:{args.port}/\n")
+    logging.basicConfig(
+        level=os.environ.get("CNC_LOG_LEVEL", "INFO"),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    logging.getLogger("cnc").info("CNC quote engine → http://%s:%s/", args.host, args.port)
     uvicorn.run(
         "cnc.api:app",
         host=args.host,
