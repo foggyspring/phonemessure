@@ -24,8 +24,24 @@ def test_quote_basic_shape():
 def test_removed_volume_drives_material():
     # Stock = cube + 3mm margin each side = 56^3 mm^3 -> 175.616 cm^3.
     q = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=1))
-    assert abs(q["plan"]["stock_volume_cm3"] - (56.0 ** 3) / 1000.0) < 0.01
+    # 50mm cube + 3mm/side = 56mm; smallest dim rounds up to the 60mm standard
+    # plate, so stock = 60 × 56 × 56 mm.
+    assert abs(q["plan"]["stock_volume_cm3"] - (60.0 * 56.0 * 56.0) / 1000.0) < 0.01
     assert abs(q["plan"]["part_volume_cm3"] - 125.0) < 0.01
+
+
+def test_standard_plate_thickness_rounding():
+    # a 17mm-thick plate must be quoted on 20mm stock (next standard plate),
+    # and the note should say so.
+    import trimesh
+    m = trimesh.creation.box(extents=(80, 60, 17)); m.apply_translation((40, 30, 8.5))
+    sb = m.export(file_type="stl")
+    from cnc.geometry import metrics_from_stl_bytes
+    q = build_quote(metrics_from_stl_bytes(sb), QuoteRequest(material="AL6061", quantity=1))
+    # thickness with margin = 17+6 = 23 -> rounds up to 25mm plate
+    assert abs(q["plan"]["stock"]["height_mm"] - 25.0) < 1e-6 or \
+           25.0 in (q["plan"]["stock"]["length_mm"], q["plan"]["stock"]["width_mm"], q["plan"]["stock"]["height_mm"])
+    assert any("标准板" in n for n in q["plan"]["notes"])
 
 
 def test_quantity_breaks_drop_unit_price():

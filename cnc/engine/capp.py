@@ -113,6 +113,14 @@ def _count_tools(feat: FeatureSet) -> int:
 _FREEFORM = 0.45
 
 
+def _round_up_to(x: float, sizes: list) -> float:
+    """Smallest standard size >= x; if larger than all, keep x (custom stock)."""
+    for s in sorted(sizes):
+        if float(s) >= x:
+            return float(s)
+    return float(x)
+
+
 def plan(
     feat: FeatureSet,
     material: Material,
@@ -126,9 +134,20 @@ def plan(
     machine = shop.machine(machine_key)
 
     # ---- Stock (raw material block) ----
+    # Real stock is bought in standard plate thicknesses, so the smallest
+    # dimension (thickness) is rounded up to the next stocked plate — you pay
+    # for a 60mm plate even if the part is 50mm thick. Length/width are sawn
+    # from the plate, so they only carry the machining margin.
     margin = capp["stock_margin_mm"]
-    dx, dy, dz = feat.metrics.dims_mm
-    stock = Stock(dx + 2 * margin, dy + 2 * margin, dz + 2 * margin, margin)
+    dims = [d + 2 * margin for d in feat.metrics.dims_mm]
+    plate = capp.get("stock_plate_mm")
+    if plate:
+        ti = min(range(3), key=lambda j: dims[j])      # thickness = smallest dim
+        std = _round_up_to(dims[ti], plate)
+        if std > dims[ti] + 1e-6:
+            notes.append(f"毛坯厚度按标准板 {std:g}mm（净厚 {feat.metrics.dims_mm[ti]:.1f}mm）")
+            dims[ti] = std
+    stock = Stock(dims[0], dims[1], dims[2], margin)
     stock_cm3 = stock.volume_mm3 / 1000.0
     part_cm3 = feat.metrics.volume_mm3 / 1000.0
     # A part cannot out-volume its own stock; if it does, the mesh is bad
