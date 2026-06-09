@@ -42,6 +42,18 @@ def test_factor_clamped_and_outlier_resistant():
     assert 1.0 <= f["SUS304"]["factor"] <= 1.5   # median ignores the outlier
 
 
+def test_backend_specific_factors():
+    samples = ([{"material": "AL6061", "backend": "toolpath", "estimated_min": 10, "actual_min": 15}] * 3
+               + [{"material": "AL6061", "backend": "analytic", "estimated_min": 10, "actual_min": 11}] * 3)
+    f = compute_time_factors(samples)
+    assert f["AL6061|toolpath"]["factor"] == pytest.approx(1.5)
+    assert f["AL6061|analytic"]["factor"] == pytest.approx(1.1)
+    # exact backend wins; unknown backend falls back to the material aggregate (n=6)
+    assert factor_for(f, "AL6061", "toolpath") == (1.5, 3)
+    assert factor_for(f, "AL6061", "analytic") == (1.1, 3)
+    assert factor_for(f, "AL6061", "5axis")[1] == 6
+
+
 def test_factor_for_fallback_chain():
     factors = {"AL6061": {"factor": 1.25, "n": 5}, "_global": {"factor": 1.1, "n": 20}}
     assert factor_for(factors, "AL6061") == (1.25, 5)     # own

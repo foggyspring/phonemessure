@@ -130,7 +130,7 @@ def build_quote(
     # Calibration: scale the estimate by the factor learned from real cycle
     # times for this material (own factor → global → 1.0). Applied before
     # costing so both the shown time and the price reflect it.
-    cal_factor, cal_n = factor_for(calibration_factors, material.key)
+    cal_factor, cal_n = factor_for(calibration_factors, material.key, backend_info.get("used"))
     if cal_factor != 1.0:
         t = plan.times
         for attr in ("roughing_min", "finishing_min", "drilling_min", "tapping_min",

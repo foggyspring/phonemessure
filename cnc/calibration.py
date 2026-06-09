@@ -24,10 +24,13 @@ def _clamp(x: float) -> float:
 
 
 def compute_time_factors(samples: list[dict]) -> dict:
-    """samples: [{material, estimated_min, actual_min}, ...] → factors.
+    """samples: [{material, backend, estimated_min, actual_min}, ...] → factors.
 
-    Returns {material: {"factor": f, "n": n}, "_global": {"factor", "n"}}.
+    Returns a flat, JSON-serialisable dict keyed by "material|backend",
+    "material", and "_global" (most specific first when resolved). A key needs
+    >= MIN_SAMPLES to appear.
     """
+    by_mb: dict[str, list[float]] = defaultdict(list)
     by_mat: dict[str, list[float]] = defaultdict(list)
     all_ratios: list[float] = []
     for s in samples:
@@ -35,26 +38,29 @@ def compute_time_factors(samples: list[dict]) -> dict:
         act = float(s.get("actual_min", 0) or 0)
         if est > 0 and act > 0:
             r = act / est
-            by_mat[str(s.get("material", ""))].append(r)
+            mat = str(s.get("material", ""))
+            be = s.get("backend")
+            by_mat[mat].append(r)
             all_ratios.append(r)
+            if be:
+                by_mb[f"{mat}|{be}"].append(r)
 
     out: dict[str, dict] = {}
     if all_ratios:
         out["_global"] = {"factor": round(_clamp(median(all_ratios)), 3), "n": len(all_ratios)}
-    for mat, ratios in by_mat.items():
+    for key, ratios in {**by_mat, **by_mb}.items():
         if len(ratios) >= MIN_SAMPLES:
-            out[mat] = {"factor": round(_clamp(median(ratios)), 3), "n": len(ratios)}
+            out[key] = {"factor": round(_clamp(median(ratios)), 3), "n": len(ratios)}
     return out
 
 
-def factor_for(factors: dict | None, material_key: str) -> tuple[float, int]:
-    """Resolve (factor, sample_count) for a material: own → global → 1.0."""
+def factor_for(factors: dict | None, material_key: str,
+               backend: str | None = None) -> tuple[float, int]:
+    """Resolve (factor, sample_count): material+backend → material → global → 1.0."""
     if not factors:
         return 1.0, 0
-    if material_key in factors:
-        f = factors[material_key]
-        return f["factor"], f["n"]
-    g = factors.get("_global")
-    if g:
-        return g["factor"], g["n"]
+    keys = ([f"{material_key}|{backend}"] if backend else []) + [material_key, "_global"]
+    for key in keys:
+        if key in factors:
+            return factors[key]["factor"], factors[key]["n"]
     return 1.0, 0
