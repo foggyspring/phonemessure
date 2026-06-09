@@ -29,6 +29,23 @@ def test_line_total_equals_unit_times_qty():
             assert abs(t["line_total_cny"] - round(t["unit_price_cny"], 2) * t["quantity"]) < 0.011
 
 
+# ---- regression: finish line-minimum applied per tier, not globally --------
+def test_finish_minimum_is_per_tier():
+    # anodize_clear has a 60-yuan line minimum. A tiny part at qty 1 is below
+    # it (top-up applies); at qty 100 the per-part finishing alone clears it,
+    # so the large tier must NOT carry the small-qty top-up.
+    shop = load()
+    q = build_quote(metrics_from_stl_bytes(cube_stl(20.0)),
+                    QuoteRequest(material="AL6061", quantity=1, finish="anodize_clear"), shop)
+    tiers = {t["quantity"]: t for t in q["quote"]["tiers"]}
+    rate = q["quote"]["machine_rate_cny_h"]
+    programming = q["plan"]["one_time_min"] / 60.0 * rate
+    setup = q["quote"]["finish_setup_cny"]
+    big = tiers[100]["amortized_one_time_cny"]
+    assert abs(big - (programming + setup) / 100) < 0.05   # no spurious top-up at qty 100
+    assert tiers[1]["amortized_one_time_cny"] > big        # small qty does carry top-up
+
+
 # ---- regression 2: part volume can't exceed stock (bad mesh) ---------------
 def test_part_volume_clamped_to_stock():
     # craft metrics whose volume is physically impossible for its bbox

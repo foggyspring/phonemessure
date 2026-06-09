@@ -129,17 +129,28 @@ def price(
     area_dm2 = plan.part_area_cm2 / 100.0
     finish_var_cny = finish.per_dm2_cny * area_dm2
 
-    # One-time batch costs (programming + first article + finish line setup).
+    # One-time batch cost (programming + first article); constant per order.
     programming_cny = (plan.one_time_min / 60.0) * plan.machine.rate_cny_per_hour
     finish_setup_cny = finish.setup_cny
-    one_time_total = programming_cny + finish_setup_cny
 
-    # Enforce the finish order minimum at the requested quantity.
-    finish_order_total = finish_setup_cny + finish_var_cny * quantity
-    if finish.min_cny > 0 and finish_order_total < finish.min_cny and quantity > 0:
-        topup = finish.min_cny - finish_order_total
-        one_time_total += topup
-        notes.append(f"表面处理起步价 {finish.min_cny:g} 元，已补足差额")
+    def finish_one_time(qty: int) -> float:
+        """Finish fixed cost for an order of *qty*, honouring the line minimum.
+
+        Per-part finishing (finish_var × qty) is already counted per unit; this
+        returns the remaining fixed portion = max(setup, min − var×qty). It is
+        evaluated *per quantity* so each price-break enforces the minimum
+        correctly (the earlier code applied one top-up across all tiers).
+        """
+        if finish.min_cny > 0:
+            return max(finish_setup_cny, finish.min_cny - finish_var_cny * qty)
+        return finish_setup_cny
+
+    def order_one_time(qty: int) -> float:
+        return programming_cny + finish_one_time(qty)
+
+    rq = max(1, quantity)
+    if finish.min_cny > 0 and finish_setup_cny + finish_var_cny * rq < finish.min_cny:
+        notes.append(f"表面处理起步价 {finish.min_cny:g} 元，已按数量补足差额")
 
     rush = bool(rush)
     rush_factor = float(biz["rush_factor"]) if rush else 1.0
@@ -149,15 +160,16 @@ def price(
 
     def make(qty: int) -> CostBreakdown:
         b = _breakdown(qty, material_cny, machining_cny, finish_var_cny,
-                       one_time_total, margin)
+                       order_one_time(qty), margin)
         if rush_factor != 1.0:
             b.unit_price_cny *= rush_factor
             b.line_total_cny = b.unit_price_cny * qty
         return b
 
-    requested = make(max(1, quantity))
-    breaks = sorted({*[int(x) for x in biz["quantity_breaks"]], max(1, quantity)})
+    requested = make(rq)
+    breaks = sorted({*[int(x) for x in biz["quantity_breaks"]], rq})
     tiers = [make(q) for q in breaks]
+    one_time_total = order_one_time(rq)
 
     return Quote(
         requested=requested,
