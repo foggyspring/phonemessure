@@ -40,6 +40,6 @@
     "tax_rate": 0.13,
     "tax_label": "增值税 VAT",
     "quote_valid_days": 30,
-    "max_part_mm": 2500
+    "max_part_mm": 1500
   }
 }
