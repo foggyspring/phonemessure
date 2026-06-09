@@ -15,7 +15,7 @@ customer sees the curve, not just one number.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from .capp import ProcessPlan
 from .shopdata import Finish, Material, ShopData
@@ -60,6 +60,8 @@ class Quote:
     valid_days: int = 0
     material_gross_cny: float = 0.0
     scrap_credit_cny: float = 0.0
+    lead_time: str = "standard"
+    lead_time_options: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         # Tax is charged on the requested line total; the grand total is what
@@ -77,6 +79,8 @@ class Quote:
             "finish_setup_cny": round(self.finish_setup_cny, 2),
             "lead_days": self.lead_days,
             "rush": self.rush,
+            "lead_time": self.lead_time,
+            "lead_time_options": self.lead_time_options,
             "currency": self.currency,
             "machine_rate_cny_h": self.machine_rate_cny_h,
             "tax_rate": self.tax_rate,
@@ -142,6 +146,7 @@ def price(
     quantity: int,
     tight_tolerance: bool = False,
     rush: bool = False,
+    lead_time: str | None = None,
 ) -> Quote:
     biz = shop.business
     margin = float(biz["margin"])
@@ -182,18 +187,29 @@ def price(
     if finish.min_cny > 0 and finish_setup_cny + finish_var_cny * rq < finish.min_cny:
         notes.append(f"表面处理起步价 {finish.min_cny:g} 元，已按数量补足差额")
 
-    rush = bool(rush)
-    rush_factor = float(biz["rush_factor"]) if rush else 1.0
-    lead_days = int(biz["rush_lead_days"] if rush else biz["standard_lead_days"])
-    if rush:
-        notes.append(f"加急 {lead_days} 天交付：加急系数 ×{rush_factor}")
+    # Lead-time tiers (经济/标准/加急/特急): one quote, several delivery options
+    # with their own price multiplier, like JLC / Protolabs. rush=True is kept
+    # as an alias for the fastest configured tier (backward compatible).
+    tier_cfg = list(biz.get("lead_time_tiers") or
+                    [{"key": "standard", "label": "标准", "days": int(biz["standard_lead_days"]), "factor": 1.0}])
+    default_key = str(biz.get("default_lead_time", "standard"))
+    sel_key = lead_time or (tier_cfg[-1]["key"] if bool(rush) else default_key)
+    sel = next((t for t in tier_cfg if t["key"] == sel_key), None) \
+        or next((t for t in tier_cfg if t["key"] == default_key), tier_cfg[0])
+    lead_factor = float(sel["factor"])
+    lead_days = int(sel["days"])
+    if lead_factor != 1.0:
+        notes.append(f"{sel['label']} {lead_days} 天交付：交期系数 ×{lead_factor}")
 
-    def make(qty: int) -> CostBreakdown:
+    def make(qty: int, factor: float = lead_factor) -> CostBreakdown:
         b = _breakdown(qty, material_cny, machining_cny, finish_var_cny,
                        order_one_time(qty), margin)
-        if rush_factor != 1.0:
-            b.unit_price_cny *= rush_factor
-            b.line_total_cny = b.unit_price_cny * qty
+        if factor != 1.0:
+            priced = b.unit_price_cny * factor
+            if factor < 1.0:                       # economy discount never below cost
+                priced = max(priced, b.unit_cost_cny)
+            b.unit_price_cny = priced
+            b.line_total_cny = priced * qty
         return b
 
     requested = make(rq)
@@ -201,13 +217,25 @@ def price(
     tiers = [make(q) for q in breaks]
     one_time_total = order_one_time(rq)
 
+    # Each delivery option's price at the requested quantity (for side-by-side UI).
+    lead_time_options = []
+    for t in tier_cfg:
+        u = make(rq, float(t["factor"])).unit_price_cny
+        lead_time_options.append({
+            "key": t["key"], "label": t["label"], "days": int(t["days"]),
+            "factor": float(t["factor"]), "unit_price_cny": round(u, 2),
+            "total_cny": round(u * rq, 2), "selected": t["key"] == sel["key"],
+        })
+
     return Quote(
         requested=requested,
         tiers=tiers,
         one_time_cny=one_time_total,
         finish_setup_cny=finish_setup_cny,
         lead_days=lead_days,
-        rush=rush,
+        rush=bool(rush),
+        lead_time=sel["key"],
+        lead_time_options=lead_time_options,
         currency=str(biz["currency"]),
         machine_rate_cny_h=plan.machine.rate_cny_per_hour,
         notes=notes,

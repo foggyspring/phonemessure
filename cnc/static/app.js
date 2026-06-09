@@ -15,6 +15,7 @@ const state = {
   lastPrice: 0,
   token: null,
   user: null,
+  leadTime: null,   // selected lead-time tier key (null → standard default)
 };
 
 const $ = (id) => document.getElementById(id);
@@ -361,7 +362,7 @@ function buildParams(save) {
     machine: $("machine").value || null,
     tight_tolerance: $("tight").checked,
     requires_5axis: $("fiveaxis").checked,
-    rush: $("rush").checked,
+    lead_time: state.leadTime,
     backend: $("backend").value,
     units: $("units").value,
     customer: $("customer").value.trim(),
@@ -469,7 +470,8 @@ function renderResult(p, isLive) {
   $("bignum-sub").innerHTML =
     `× ${r.quantity} 件 · 净额 ${money(q.net_total_cny != null ? q.net_total_cny : r.line_total_cny, cur)}` +
     ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
-    ` · 交期 ${q.lead_days} 天${q.rush ? " 加急" : ""}${valid}`;
+    ` · 交期 ${q.lead_days} 天${valid}`;
+  renderLeadOptions(q, isLive);
   const psrc = p.input?.price_source;
   const srcTag = psrc && psrc !== "static"
     ? ` <span class="muted tiny">(${psrc === "manual override" ? "改价" : psrc.split(" ")[0]})</span>` : "";
@@ -509,6 +511,25 @@ function renderResult(p, isLive) {
   const wasHidden = resEl.classList.contains("hidden");
   resEl.classList.remove("hidden");
   if (wasHidden) { resEl.classList.add("reveal"); resEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
+}
+
+// ───────────────────────── lead-time options ─────────────────────────
+function renderLeadOptions(q, isLive) {
+  const el = $("lead-opts");
+  const opts = q.lead_time_options || [];
+  if (!opts.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="lead-title">交期选项 Delivery</div>` +
+    `<div class="lead-chips">` + opts.map((o) =>
+      `<button class="lead-chip${o.selected ? " on" : ""}" data-lead="${esc(o.key)}"${isLive ? " disabled" : ""}>
+         <span class="lead-name">${esc(o.label)}</span>
+         <span class="lead-days">${o.days} 天</span>
+         <span class="lead-price">${money(o.unit_price_cny, q.currency)}/件</span>
+       </button>`).join("") + `</div>`;
+  el.querySelectorAll(".lead-chip").forEach((b) => b.addEventListener("click", () => {
+    const key = b.dataset.lead;
+    state.leadTime = key;
+    requestQuote(false);   // re-quote with the chosen tier (saved quote)
+  }));
 }
 
 // ───────────────────────── calibration (admin) ─────────────────────────
@@ -833,7 +854,7 @@ function main() {
   $("cal-submit").addEventListener("click", submitCalibration);
 
   // Live re-quote on any parameter change (once a first quote exists).
-  ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "rush", "backend", "units", "customer"].forEach((id) =>
+  ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "backend", "units", "customer"].forEach((id) =>
     $(id).addEventListener("change", scheduleLiveQuote));
   $("material").addEventListener("change", scheduleLiveQuote);
   ["m-l", "m-w", "m-h", "m-v"].forEach((id) =>

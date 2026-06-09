@@ -221,6 +221,29 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
     )
     flow.append(Spacer(1, 5 * mm))
 
+    # ---- Delivery (lead-time) options ----
+    lead_opts = quote.get("lead_time_options") or []
+    if len(lead_opts) > 1:
+        flow.append(Paragraph("<b>交期选项 Delivery options</b>（按所选数量 at requested qty）", body))
+        lt_rows = [["交期 Lead time", "工期 Days", f"单价 Unit ({cur})", f"总价 Total ({cur})"]]
+        sel_idx = 0
+        for i, o in enumerate(lead_opts):
+            if o.get("selected"):
+                sel_idx = i + 1
+            lt_rows.append([o["label"], f"{o['days']} 天",
+                            _money(o["unit_price_cny"], cur), _money(o["total_cny"], cur)])
+        lt = Table(lt_rows, colWidths=[58 * mm, 30 * mm, 38 * mm, 38 * mm])
+        lt.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), _FONT), ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("BACKGROUND", (0, sel_idx), (-1, sel_idx), colors.Color(0.85, 0.92, 1.0)),
+            ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("GRID", (0, 0), (-1, -1), 0.4, _GREY),
+        ]))
+        flow.append(lt)
+        flow.append(Spacer(1, 5 * mm))
+
     # ---- Quantity price breaks ----
     flow.append(Paragraph("<b>阶梯报价 Quantity price breaks</b>", body))
     tier_header = ["数量 Qty", "单价 Unit", "总价 Total"]

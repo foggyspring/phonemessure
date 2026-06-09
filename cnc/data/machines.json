@@ -37,6 +37,13 @@
     "rush_factor": 1.4,
     "rush_lead_days": 3,
     "standard_lead_days": 10,
+    "lead_time_tiers": [
+      {"key": "economy",  "label": "经济 Economy",  "days": 15, "factor": 0.92},
+      {"key": "standard", "label": "标准 Standard", "days": 10, "factor": 1.0},
+      {"key": "express",  "label": "加急 Express",  "days": 5,  "factor": 1.2},
+      {"key": "rush",     "label": "特急 Rush",     "days": 3,  "factor": 1.4}
+    ],
+    "default_lead_time": "standard",
     "quantity_breaks": [1, 5, 10, 25, 50, 100],
     "tax_rate": 0.13,
     "tax_label": "增值税 VAT",

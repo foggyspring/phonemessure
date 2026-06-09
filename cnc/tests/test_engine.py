@@ -61,6 +61,40 @@ def test_standard_plate_thickness_rounding():
     assert any("标准板" in n for n in q["plan"]["notes"])
 
 
+def test_lead_time_options_and_selection():
+    q = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=10))
+    opts = {o["key"]: o for o in q["quote"]["lead_time_options"]}
+    assert {"economy", "standard", "express", "rush"} <= set(opts)
+    # faster delivery costs more; economy (slowest) is cheapest
+    assert (opts["economy"]["unit_price_cny"] < opts["standard"]["unit_price_cny"]
+            < opts["express"]["unit_price_cny"] < opts["rush"]["unit_price_cny"])
+    assert opts["standard"]["selected"] and opts["rush"]["days"] < opts["standard"]["days"]
+
+    # selecting a tier drives the requested price
+    qe = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=10, lead_time="express"))
+    assert qe["quote"]["lead_time"] == "express"
+    assert abs(qe["quote"]["requested"]["unit_price_cny"] - opts["express"]["unit_price_cny"]) < 0.01
+    # rush=True remains an alias for the fastest tier (3 days)
+    assert build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=10, rush=True))["quote"]["lead_days"] == 3
+    # economy discount never sells below unit cost
+    for o in q["quote"]["lead_time_options"]:
+        assert o["unit_price_cny"] >= q["quote"]["requested"]["unit_cost_cny"] - 1e-6
+
+
+def test_economy_floor_never_below_cost():
+    # force a tiny margin so the economy discount would otherwise dip below cost
+    import dataclasses
+    from cnc.engine import load
+    shop = load()
+    shop = dataclasses.replace(shop, business={**shop.business, "margin": 0.02})
+    q = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=10), shop)
+    eco = next(o for o in q["quote"]["lead_time_options"] if o["key"] == "economy")
+    cost = q["quote"]["requested"]["unit_cost_cny"]
+    # economy is floored exactly at cost (1.02×0.92 = 0.938 < 1 would breach it)
+    assert eco["unit_price_cny"] >= cost - 1e-6
+    assert abs(eco["unit_price_cny"] - cost) < 0.01
+
+
 def test_quantity_breaks_drop_unit_price():
     q = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=1))
     tiers = {t["quantity"]: t["unit_price_cny"] for t in q["quote"]["tiers"]}

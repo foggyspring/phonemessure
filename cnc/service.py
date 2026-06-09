@@ -27,6 +27,7 @@ class QuoteRequest:
     requires_5axis: bool = False
     min_wall_mm: float | None = None
     rush: bool = False
+    lead_time: str | None = None     # 经济/标准/加急/特急 tier key
     machine: str | None = None
     holes: list[Hole] = field(default_factory=list)
     part_name: str = ""
@@ -53,6 +54,7 @@ class QuoteRequest:
             requires_5axis=bool(p.get("requires_5axis", False)),
             min_wall_mm=(float(p["min_wall_mm"]) if p.get("min_wall_mm") else None),
             rush=bool(p.get("rush", False)),
+            lead_time=(str(p["lead_time"]) if p.get("lead_time") else None),
             machine=(str(p["machine"]) if p.get("machine") else None),
             holes=holes,
             part_name=str(p.get("part_name", "")),
@@ -146,6 +148,7 @@ def build_quote(
         quantity=req.quantity,
         tight_tolerance=req.tight_tolerance,
         rush=req.rush,
+        lead_time=req.lead_time,
     )
 
     dims = metrics.dims_mm
