@@ -499,10 +499,23 @@ function renderResult(p, isLive) {
   }
   $("tier-table").innerHTML = rows;
 
-  const notes = [...(p.warnings || []), ...(q.notes || []), ...(pl.notes || [])];
-  $("warn-list").innerHTML = notes.length
-    ? notes.map((n) => { const c = classifyDFM(n); return `<li class="${c.level}"><span class="w-ico">${c.ico}</span><span>${n}</span></li>`; }).join("")
-    : `<li class="info"><span class="w-ico">✅</span><span>无明显可加工性风险 No DFM flags</span></li>`;
+  // Structured DFM findings (graded), then lighter cost/process notes.
+  const SEV = { high: { c: "warn", ico: "⛔", t: "高" }, medium: { c: "warn", ico: "⚠️", t: "中" },
+                low: { c: "info", ico: "ℹ️", t: "低" }, info: { c: "info", ico: "💡", t: "" } };
+  const dfm = p.dfm || [];
+  const hasRisk = dfm.some((d) => d.severity === "high" || d.severity === "medium");
+  const dfmHtml = dfm.map((d) => {
+    const s = SEV[d.severity] || SEV.info;
+    const badge = s.t ? `<span class="sev-badge ${d.severity}">${s.t}</span>` : "";
+    return `<li class="${s.c}"><span class="w-ico">${s.ico}</span><span>${badge}<b>${esc(d.title)}</b> — ${esc(d.detail)}
+      <span class="muted tiny">建议：${esc(d.suggestion)}</span></span></li>`;
+  }).join("");
+  const notes = [...(q.notes || []), ...(pl.notes || [])];
+  const noteHtml = notes.map((n) => `<li class="info"><span class="w-ico">·</span><span class="muted">${esc(n)}</span></li>`).join("");
+  $("warn-list").innerHTML = (dfmHtml + noteHtml) ||
+    `<li class="info"><span class="w-ico">✅</span><span>无明显可加工性风险 No DFM flags</span></li>`;
+  if (dfm.length) $("warn-card").querySelector("h3").textContent =
+    hasRisk ? "工艺提示 Notes & DFM ⚠" : "工艺提示 Notes & DFM";
 
   renderEstimator(p);
   renderCalibration(p, isLive);

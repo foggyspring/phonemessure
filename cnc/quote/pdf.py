@@ -298,10 +298,23 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
     flow.append(tot)
     flow.append(Spacer(1, 5 * mm))
 
-    # ---- Notes & DFM warnings ----
-    notes = list(payload.get("warnings", [])) + list(quote.get("notes", [])) + list(plan.get("notes", []))
+    # ---- DFM findings (graded) ----
+    dfm = [d for d in payload.get("dfm", []) if d.get("severity") in ("high", "medium")]
+    if dfm:
+        flow.append(Paragraph("<b>可加工性提示 DFM findings</b>", body))
+        _sev = {"high": ("⛔ 高", colors.Color(0.85, 0.33, 0.31)),
+                "medium": ("⚠ 中", colors.Color(0.88, 0.57, 0.18))}
+        for d in dfm:
+            tag, col = _sev[d["severity"]]
+            flow.append(Paragraph(
+                f'<font color="#{int(col.red*255):02x}{int(col.green*255):02x}{int(col.blue*255):02x}">'
+                f'[{tag}]</font> <b>{d["title"]}</b> — {d["detail"]} <i>建议：{d["suggestion"]}</i>', small))
+        flow.append(Spacer(1, 2 * mm))
+
+    # ---- Notes ----
+    notes = list(quote.get("notes", [])) + list(plan.get("notes", []))
     if notes:
-        flow.append(Paragraph("<b>工艺提示 Notes &amp; DFM</b>", body))
+        flow.append(Paragraph("<b>工艺/成本说明 Notes</b>", body))
         for n in notes:
             flow.append(Paragraph(f"• {n}", small))
     flow.append(Spacer(1, 4 * mm))
