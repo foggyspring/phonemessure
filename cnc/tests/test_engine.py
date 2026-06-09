@@ -252,3 +252,14 @@ def test_confidence_score_present_and_ranked():
                        mesh_stl=sb, backend="analytic")["confidence"]
     assert 30 <= hard["score"] <= simple["score"] <= 98
     assert simple["level"] in ("high", "medium") and hard["reasons"]
+
+
+def test_logistics_weight_and_min_order():
+    m = _metrics()
+    one = build_quote(m, QuoteRequest(material="AL6061", quantity=1))["logistics"]
+    fifty = build_quote(m, QuoteRequest(material="AL6061", quantity=50))["logistics"]
+    # a 50mm aluminium cube ~0.34 kg → 50 of them ~17 kg
+    assert 15 < fifty["order_weight_kg"] < 18
+    assert fifty["shipping_cny"] > one["shipping_cny"]
+    assert one["meets_min_order"] is False and one["shortfall_cny"] > 0
+    assert fifty["meets_min_order"] is True

@@ -17,6 +17,23 @@ from .dfm import analyze_dfm
 from .suggest import suggest_materials
 
 
+def _logistics(shop: ShopData, plan, material, qty: int, quote) -> dict:
+    """Weight-based shipping estimate + minimum-order check (CNY base)."""
+    biz = shop.business
+    part_kg = plan.part_volume_cm3 * material.density_g_cm3 / 1000.0   # cm³·(g/cm³)=g → kg
+    order_kg = part_kg * max(1, qty)
+    shipping = float(biz.get("packaging_cny", 0)) + order_kg * float(biz.get("shipping_cny_per_kg", 0))
+    net = quote.requested.unit_price_cny * max(1, qty)
+    min_order = float(biz.get("min_order_cny", 0))
+    return {
+        "order_weight_kg": round(order_kg, 3),
+        "shipping_cny": round(shipping, 2),
+        "min_order_cny": min_order,
+        "meets_min_order": net >= min_order,
+        "shortfall_cny": round(max(0.0, min_order - net), 2),
+    }
+
+
 def _resolve_fx(shop: ShopData, currency: str | None) -> dict:
     """Display-currency conversion off the CNY base (rates are indicative)."""
     rates = shop.business.get("fx_rates") or {"CNY": {"symbol": "¥", "rate": 1.0}}
@@ -283,6 +300,7 @@ def build_quote(
                            wall_auto=auto_wall is not None, holes_auto=holes_auto),
         "material_suggestions": suggest_materials(feat, material, finish, shop, req.quantity),
         "fx": _resolve_fx(shop, req.currency),
+        "logistics": _logistics(shop, plan, material, req.quantity, quote),
         "confidence": score_quote(
             backend=backend_info.get("used", ""), complexity=metrics.complexity,
             holes_auto=holes_auto, wall_auto=auto_wall is not None,

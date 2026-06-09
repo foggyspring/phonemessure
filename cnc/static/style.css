@@ -379,3 +379,5 @@ table.hist .h-id { color: var(--muted2); font-family: ui-monospace, "SF Mono", m
 .conf-badge.high { color: #3fb950; border-color: #3fb950; background: rgba(63,185,80,.12); }
 .conf-badge.medium { color: #d29922; border-color: #d29922; background: rgba(210,153,34,.12); }
 .conf-badge.low { color: #f85149; border-color: #f85149; background: rgba(248,81,73,.12); }
+.logistics { margin: 6px 0; line-height: 1.8; }
+.min-order { color: var(--warn); font-size: 12px; }

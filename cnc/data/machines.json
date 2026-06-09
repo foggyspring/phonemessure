@@ -68,6 +68,9 @@
       "USD": {"symbol": "$", "rate": 0.14},
       "EUR": {"symbol": "€", "rate": 0.13}
     },
+    "min_order_cny": 200.0,
+    "shipping_cny_per_kg": 12.0,
+    "packaging_cny": 25.0,
     "tax_rate": 0.13,
     "tax_label": "增值税 VAT",
     "quote_valid_days": 30,

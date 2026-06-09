@@ -485,6 +485,7 @@ function renderResult(p, isLive) {
     ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
     ` · 交期 ${q.lead_days} 天${valid}`;
   renderConfidence(p);
+  renderLogistics(p);
   renderLeadOptions(q, isLive);
   renderMaterialSuggestions(p);
   const psrc = p.input?.price_source;
@@ -539,6 +540,18 @@ function renderResult(p, isLive) {
   const wasHidden = resEl.classList.contains("hidden");
   resEl.classList.remove("hidden");
   if (wasHidden) { resEl.classList.add("reveal"); resEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
+}
+
+// ───────────────────────── logistics ─────────────────────────
+function renderLogistics(p) {
+  const el = $("logistics");
+  if (!el) return;
+  const L = p.logistics;
+  if (!L) { el.innerHTML = ""; return; }
+  let h = `<span class="muted tiny">预估运费 Shipping（${L.order_weight_kg} kg）：${money(L.shipping_cny)}</span>`;
+  if (!L.meets_min_order)
+    h += ` <span class="min-order">未达最小起订额 ${money(L.min_order_cny)}，差 ${money(L.shortfall_cny)}</span>`;
+  el.innerHTML = h;
 }
 
 // ───────────────────────── confidence ─────────────────────────
