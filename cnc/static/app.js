@@ -774,7 +774,11 @@ function renderConfidence(p) {
   if (!c) { el.innerHTML = ""; return; }
   const label = { high: "高 High", medium: "中 Medium", low: "低 Low" }[c.level] || c.level;
   const reasons = c.reasons.length ? "影响：" + c.reasons.map(esc).join("、") : "无明显不确定因素";
-  el.innerHTML = `<span class="conf-badge ${c.level}" title="${esc(reasons)}">报价置信度 ${c.score}/100 · ${label}</span>`;
+  const cur = (p.quote && p.quote.currency) || "CNY";
+  const rng = c.price_range_cny
+    ? ` <span class="muted tiny">参考区间 ${money(c.price_range_cny.low, cur)}–${money(c.price_range_cny.high, cur)} (±${(c.price_range_cny.band_pct*100).toFixed(0)}%)</span>`
+    : "";
+  el.innerHTML = `<span class="conf-badge ${c.level}" title="${esc(reasons)}">报价置信度 ${c.score}/100 · ${label}</span>` + rng;
 }
 
 // ───────────────────────── material suggestions ─────────────────────────

@@ -42,4 +42,8 @@ def score_quote(*, backend: str, complexity: float, holes_auto: bool, wall_auto:
 
     score = max(30, min(98, round(score)))
     level = "high" if score >= 80 else "medium" if score >= 60 else "low"
-    return {"score": score, "level": level, "reasons": reasons}
+    # Estimation uncertainty band by confidence level: a point price implies a
+    # false precision, so we publish a ± range (reference only, not the billed
+    # price). High-confidence quotes are tight; low-confidence ones are wide.
+    band_pct = {"high": 0.08, "medium": 0.15, "low": 0.25}[level]
+    return {"score": score, "level": level, "reasons": reasons, "band_pct": band_pct}

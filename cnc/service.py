@@ -271,6 +271,19 @@ def build_quote(
     plan_d["machine_label"] = plan.machine.label
     plan_d["calibration"] = {"factor": cal_factor, "n": cal_n}
 
+    conf = score_quote(
+        backend=backend_info.get("used", ""), complexity=metrics.complexity,
+        holes_auto=holes_auto, wall_auto=auto_wall is not None,
+        undercut_frac=feat.undercut_frac, near_envelope=bool(max_part and max_dim > 0.8 * max_part),
+        has_mesh=mesh_stl is not None, calibration_n=cal_n, dim_suspect=max_dim < 3.0,
+        watertight=mesh_watertight)
+    # Reference price range from the confidence band (does not change the billed price).
+    _up = quote.requested.unit_price_cny
+    band = conf.get("band_pct", 0.15)
+    conf["price_range_cny"] = {"low": round(_up * (1 - band), 2),
+                               "high": round(_up * (1 + band), 2),
+                               "band_pct": band}
+
     return {
         "input": {
             "part_name": req.part_name or "part",
@@ -333,11 +346,6 @@ def build_quote(
         "logistics": _logistics(shop, plan, material, req.quantity, quote),
         "material_comparison": (compare_all_materials(feat, finish, shop, req.quantity)
                                 if compare else None),
-        "confidence": score_quote(
-            backend=backend_info.get("used", ""), complexity=metrics.complexity,
-            holes_auto=holes_auto, wall_auto=auto_wall is not None,
-            undercut_frac=feat.undercut_frac, near_envelope=bool(max_part and max_dim > 0.8 * max_part),
-            has_mesh=mesh_stl is not None, calibration_n=cal_n, dim_suspect=max_dim < 3.0,
-            watertight=mesh_watertight),
+        "confidence": conf,
         "estimator": backend_info,
     }

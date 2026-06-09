@@ -333,6 +333,9 @@ def test_confidence_score_present_and_ranked():
                        mesh_stl=sb, backend="analytic")["confidence"]
     assert 30 <= hard["score"] <= simple["score"] <= 98
     assert simple["level"] in ("high", "medium") and hard["reasons"]
+    # confidence carries a reference price band; lower confidence ⇒ wider band
+    assert simple["price_range_cny"]["low"] < simple["price_range_cny"]["high"]
+    assert hard["band_pct"] >= simple["band_pct"]
 
 
 def test_logistics_weight_and_min_order():
