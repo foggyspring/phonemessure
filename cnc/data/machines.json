@@ -1,0 +1,41 @@
+{
+  "_comment": "Machine cell rates and shop-wide CAPP constants. Rates in CNY/hour. base_mrr_cm3_min is the roughing material-removal rate for the easiest material (machinability 1.0); the CAPP engine divides it by a material's machinability to get the effective rate.",
+  "machines": {
+    "mill_3axis": {
+      "label": "三轴加工中心 (3-axis mill)",
+      "rate_cny_per_hour": 60.0,
+      "base_mrr_cm3_min": 28.0,
+      "max_axes": 3
+    },
+    "mill_5axis": {
+      "label": "五轴加工中心 (5-axis mill)",
+      "rate_cny_per_hour": 200.0,
+      "base_mrr_cm3_min": 18.0,
+      "max_axes": 5
+    }
+  },
+  "capp": {
+    "stock_margin_mm": 3.0,
+    "finish_pass_min_per_cm2": 0.05,
+    "drill_min_per_hole_base": 0.35,
+    "drill_min_per_mm_depth": 0.04,
+    "tap_min_per_hole": 0.9,
+    "fixture_min_per_setup": 12.0,
+    "toolchange_min_per_tool": 0.5,
+    "programming_min_base": 25.0,
+    "programming_min_per_complexity": 35.0,
+    "first_article_min": 15.0,
+    "tight_tolerance_machining_factor": 1.35,
+    "tight_tolerance_inspection_min_per_part": 6.0,
+    "min_machine_min_per_part": 3.0
+  },
+  "business": {
+    "currency": "CNY",
+    "margin": 0.30,
+    "tight_tolerance_margin_bonus": 0.05,
+    "rush_factor": 1.4,
+    "rush_lead_days": 3,
+    "standard_lead_days": 10,
+    "quantity_breaks": [1, 5, 10, 25, 50, 100]
+  }
+}

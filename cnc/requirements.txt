@@ -1,0 +1,24 @@
+# CNC automatic quoting engine — dependencies.
+# The geometry core is pure Python (no numpy / no native kernel), so the only
+# hard requirements are the web server, multipart upload, and PDF rendering.
+
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart>=0.0.9
+reportlab>=4.2
+
+# --- Optional: B-rep (STEP / IGES) parsing -------------------------------
+# STL parses out of the box. To also read .step/.stp/.igs/.iges you need the
+# OpenCASCADE kernel, which is a conda package (no pip wheel):
+#
+#     conda install -c conda-forge pythonocc-core
+#
+# Without it the API returns a clear 422 for B-rep uploads and the frontend
+# falls back to manual dimension entry, so the system stays fully usable.
+
+# --- Optional: nicer PDF Chinese glyphs ----------------------------------
+# The PDF embeds whatever CJK TrueType font it finds (WenQuanYi / Noto /
+# PingFang / msyh). To force one, set CNC_CJK_FONT=/path/to/font.ttf|ttc.
+
+# --- Test only -----------------------------------------------------------
+# pytest>=8

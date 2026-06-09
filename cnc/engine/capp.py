@@ -1,0 +1,227 @@
+"""CAPP — Computer-Aided Process Planning.
+
+Turns geometry + declared features into a simulated process plan and a time
+budget, following the brief's chain:
+
+    开粗 Roughing -> 精加工 Finishing -> 钻孔 Drilling -> 攻丝 Tapping
+
+Plus the overheads that dominate small-batch CNC: fixturing per setup, tool
+changes, and a one-time programming + first-article cost amortised over the
+batch. Times are in minutes; money is added later by the costing engine.
+
+The numbers are intentionally transparent (every line is traceable to a shop
+constant in machines.json) rather than a black box — that is what lets a quote
+be defended to a customer or tuned by an estimator.
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import asdict, dataclass
+
+from ..geometry.features import FeatureSet
+from .shopdata import Machine, Material, ShopData
+
+
+@dataclass
+class Stock:
+    length_mm: float
+    width_mm: float
+    height_mm: float
+    margin_mm: float
+
+    @property
+    def volume_mm3(self) -> float:
+        return self.length_mm * self.width_mm * self.height_mm
+
+
+@dataclass
+class TimeBreakdown:
+    roughing_min: float
+    finishing_min: float
+    drilling_min: float
+    tapping_min: float
+    toolchange_min: float
+    fixturing_min: float
+    inspection_min: float
+
+    @property
+    def per_part_min(self) -> float:
+        return (
+            self.roughing_min
+            + self.finishing_min
+            + self.drilling_min
+            + self.tapping_min
+            + self.toolchange_min
+            + self.fixturing_min
+            + self.inspection_min
+        )
+
+
+@dataclass
+class ProcessPlan:
+    machine: Machine
+    stock: Stock
+    stock_volume_cm3: float
+    part_volume_cm3: float
+    part_area_cm2: float
+    removed_volume_cm3: float
+    effective_mrr_cm3_min: float
+    setups: int
+    tools: int
+    times: TimeBreakdown
+    one_time_min: float          # programming + first article, per batch
+    complexity_factor: float
+    notes: list[str]
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["machine"] = self.machine.key
+        d["times"]["per_part_min"] = round(self.times.per_part_min, 2)
+        return d
+
+
+def _estimate_setups(feat: FeatureSet, machine: Machine) -> int:
+    """How many times the part must be re-fixtured.
+
+    A 5-axis machine reaches most faces in one setup. On 3-axis, a roughly
+    cubic / multi-face part needs a flip (top + bottom), and very non-planar
+    parts may need a third orientation.
+    """
+    if machine.max_axes >= 5:
+        return 2 if feat.metrics.complexity > 0.6 else 1
+    dims = sorted(feat.metrics.dims_mm)
+    plate_like = dims[0] > 0 and dims[2] / dims[0] > 4.0  # thin -> likely 1-2 setups
+    setups = 2
+    if feat.metrics.complexity > 0.5 and not plate_like:
+        setups = 3
+    return setups
+
+
+def _count_tools(feat: FeatureSet) -> int:
+    """Distinct cutting tools -> drives tool-change time."""
+    tools = 2  # a roughing endmill + a finishing endmill, always.
+    tools += feat.distinct_drill_sizes          # one drill per distinct hole size
+    if feat.threaded_holes:
+        tools += 1                               # a tap
+    if feat.metrics.complexity > _FREEFORM:
+        tools += 1                               # a ball-nose for surfacing
+    return tools
+
+
+_FREEFORM = 0.45
+
+
+def plan(
+    feat: FeatureSet,
+    material: Material,
+    shop: ShopData,
+    machine_key: str | None = None,
+) -> ProcessPlan:
+    capp = shop.capp
+    notes: list[str] = []
+
+    machine_key = machine_key or ("mill_5axis" if feat.requires_5axis else "mill_3axis")
+    machine = shop.machine(machine_key)
+
+    # ---- Stock (raw material block) ----
+    margin = capp["stock_margin_mm"]
+    dx, dy, dz = feat.metrics.dims_mm
+    stock = Stock(dx + 2 * margin, dy + 2 * margin, dz + 2 * margin, margin)
+    stock_cm3 = stock.volume_mm3 / 1000.0
+    part_cm3 = feat.metrics.volume_mm3 / 1000.0
+    removed_cm3 = max(stock_cm3 - part_cm3, 0.0)
+
+    # ---- Complexity multiplier (freeform / 5-axis / thin wall / tolerance) ----
+    complexity_factor = 1.0 + feat.metrics.complexity  # 1.0 .. 2.0
+    if feat.requires_5axis:
+        complexity_factor *= 1.5
+        notes.append("五轴/复杂曲面：精加工系数 ×1.5")
+    if feat.min_wall_mm is not None and 0 < feat.min_wall_mm < 1.0:
+        complexity_factor *= 1.25
+        notes.append("薄壁(<1mm)：难度系数 ×1.25")
+
+    # ---- Roughing: bulk metal removal at the material-adjusted MRR ----
+    eff_mrr = machine.base_mrr_cm3_min / material.machinability
+    roughing_min = removed_cm3 / eff_mrr if eff_mrr > 0 else 0.0
+
+    # ---- Finishing: scales with surface area and complexity ----
+    area_cm2 = feat.metrics.area_mm2 / 100.0
+    finishing_min = (
+        area_cm2
+        * capp["finish_pass_min_per_cm2"]
+        * complexity_factor
+        * material.machinability ** 0.5
+    )
+
+    # ---- Drilling & tapping ----
+    drilling_min = 0.0
+    tapping_min = 0.0
+    for h in feat.holes:
+        per_hole = (
+            capp["drill_min_per_hole_base"]
+            + capp["drill_min_per_mm_depth"] * h.depth_mm
+        ) * material.machinability
+        if h.is_deep:
+            per_hole *= 1.5  # peck-drilling penalty
+        drilling_min += per_hole * h.count
+        if h.threaded:
+            tapping_min += capp["tap_min_per_hole"] * material.machinability * h.count
+
+    # ---- Setups, tool changes, inspection ----
+    setups = _estimate_setups(feat, machine)
+    tools = _count_tools(feat)
+    fixturing_min = capp["fixture_min_per_setup"] * setups
+    toolchange_min = capp["toolchange_min_per_tool"] * tools
+    inspection_min = (
+        capp["tight_tolerance_inspection_min_per_part"] if feat.tight_tolerance else 0.0
+    )
+
+    # ---- Tight-tolerance slows the cutting passes ----
+    if feat.tight_tolerance:
+        f = capp["tight_tolerance_machining_factor"]
+        roughing_min *= f
+        finishing_min *= f
+        notes.append(f"精密公差：切削系数 ×{f}")
+
+    # Floor: tiny parts still cost real cycle time (load/unload/probe).
+    raw_cut = roughing_min + finishing_min + drilling_min + tapping_min
+    floor = capp["min_machine_min_per_part"]
+    if raw_cut < floor:
+        finishing_min += floor - raw_cut
+        notes.append(f"小件保底机时 {floor:g}min")
+
+    times = TimeBreakdown(
+        roughing_min=roughing_min,
+        finishing_min=finishing_min,
+        drilling_min=drilling_min,
+        tapping_min=tapping_min,
+        toolchange_min=toolchange_min,
+        fixturing_min=fixturing_min,
+        inspection_min=inspection_min,
+    )
+
+    # ---- One-time batch overhead: programming scales with complexity ----
+    one_time_min = (
+        capp["programming_min_base"]
+        + capp["programming_min_per_complexity"] * feat.metrics.complexity
+        + capp["first_article_min"]
+    )
+    if feat.requires_5axis:
+        one_time_min += capp["programming_min_per_complexity"]  # 5-axis CAM is slower
+        notes.append("五轴编程：一次性编程工时增加")
+
+    return ProcessPlan(
+        machine=machine,
+        stock=stock,
+        stock_volume_cm3=round(stock_cm3, 3),
+        part_volume_cm3=round(part_cm3, 3),
+        part_area_cm2=round(area_cm2, 3),
+        removed_volume_cm3=round(removed_cm3, 3),
+        effective_mrr_cm3_min=round(eff_mrr, 2),
+        setups=setups,
+        tools=tools,
+        times=times,
+        one_time_min=round(one_time_min, 2),
+        complexity_factor=round(complexity_factor, 3),
+        notes=notes,
+    )

@@ -1,0 +1,166 @@
+"""Costing engine — turns the process plan into money and tiered prices.
+
+Implements the brief's master formula:
+
+    总报价 = (材料成本 + 加工成本 + 表面处理成本 + 编程与准备工时) × (1 + 利润率)
+
+Two cost classes matter for tiered pricing:
+
+  * per-part variable cost  — material, cutting time, per-part finishing
+  * one-time batch cost      — programming, first article, finish line setup
+
+The one-time bucket is amortised over the order quantity, which is *why* unit
+price drops as quantity rises (量大从优). We expose a price-break table so the
+customer sees the curve, not just one number.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+
+from .capp import ProcessPlan
+from .shopdata import Finish, Material, ShopData
+
+
+@dataclass
+class CostBreakdown:
+    quantity: int
+    material_cny: float
+    machining_cny: float
+    finish_variable_cny: float
+    amortized_one_time_cny: float
+    unit_cost_cny: float
+    margin: float
+    unit_price_cny: float
+    line_total_cny: float
+
+    def to_dict(self) -> dict:
+        return {k: (round(v, 2) if isinstance(v, float) else v)
+                for k, v in asdict(self).items()}
+
+
+@dataclass
+class Quote:
+    requested: CostBreakdown
+    tiers: list[CostBreakdown]
+    one_time_cny: float
+    finish_setup_cny: float
+    lead_days: int
+    rush: bool
+    currency: str
+    machine_rate_cny_h: float
+    notes: list[str]
+
+    def to_dict(self) -> dict:
+        return {
+            "requested": self.requested.to_dict(),
+            "tiers": [t.to_dict() for t in self.tiers],
+            "one_time_cny": round(self.one_time_cny, 2),
+            "finish_setup_cny": round(self.finish_setup_cny, 2),
+            "lead_days": self.lead_days,
+            "rush": self.rush,
+            "currency": self.currency,
+            "machine_rate_cny_h": self.machine_rate_cny_h,
+            "notes": self.notes,
+        }
+
+
+def _material_cost(plan: ProcessPlan, material: Material) -> float:
+    # stock volume (cm^3) * density (g/cm^3) = grams; /1000 -> kg; * price/kg.
+    grams = plan.stock_volume_cm3 * material.density_g_cm3
+    return (grams / 1000.0) * material.price_cny_per_kg
+
+
+def _machining_cost(plan: ProcessPlan) -> float:
+    return (plan.times.per_part_min / 60.0) * plan.machine.rate_cny_per_hour
+
+
+def _breakdown(
+    qty: int,
+    material_cny: float,
+    machining_cny: float,
+    finish_var_cny: float,
+    one_time_total_cny: float,
+    margin: float,
+) -> CostBreakdown:
+    amortized = one_time_total_cny / qty if qty > 0 else one_time_total_cny
+    unit_cost = material_cny + machining_cny + finish_var_cny + amortized
+    unit_price = unit_cost * (1.0 + margin)
+    return CostBreakdown(
+        quantity=qty,
+        material_cny=material_cny,
+        machining_cny=machining_cny,
+        finish_variable_cny=finish_var_cny,
+        amortized_one_time_cny=amortized,
+        unit_cost_cny=unit_cost,
+        margin=margin,
+        unit_price_cny=unit_price,
+        line_total_cny=unit_price * qty,
+    )
+
+
+def price(
+    plan: ProcessPlan,
+    material: Material,
+    finish: Finish,
+    shop: ShopData,
+    quantity: int,
+    tight_tolerance: bool = False,
+    rush: bool = False,
+) -> Quote:
+    biz = shop.business
+    margin = float(biz["margin"])
+    notes: list[str] = []
+
+    if tight_tolerance:
+        margin += float(biz["tight_tolerance_margin_bonus"])
+        notes.append("精密公差：风险溢价提高利润率")
+
+    # Per-part variable costs.
+    material_cny = _material_cost(plan, material)
+    machining_cny = _machining_cost(plan)
+
+    # Surface treatment is priced on the part's real surface area (cm^2 -> dm^2).
+    area_dm2 = plan.part_area_cm2 / 100.0
+    finish_var_cny = finish.per_dm2_cny * area_dm2
+
+    # One-time batch costs (programming + first article + finish line setup).
+    programming_cny = (plan.one_time_min / 60.0) * plan.machine.rate_cny_per_hour
+    finish_setup_cny = finish.setup_cny
+    one_time_total = programming_cny + finish_setup_cny
+
+    # Enforce the finish order minimum at the requested quantity.
+    finish_order_total = finish_setup_cny + finish_var_cny * quantity
+    if finish.min_cny > 0 and finish_order_total < finish.min_cny and quantity > 0:
+        topup = finish.min_cny - finish_order_total
+        one_time_total += topup
+        notes.append(f"表面处理起步价 {finish.min_cny:g} 元，已补足差额")
+
+    rush = bool(rush)
+    rush_factor = float(biz["rush_factor"]) if rush else 1.0
+    lead_days = int(biz["rush_lead_days"] if rush else biz["standard_lead_days"])
+    if rush:
+        notes.append(f"加急 {lead_days} 天交付：加急系数 ×{rush_factor}")
+
+    def make(qty: int) -> CostBreakdown:
+        b = _breakdown(qty, material_cny, machining_cny, finish_var_cny,
+                       one_time_total, margin)
+        if rush_factor != 1.0:
+            b.unit_price_cny *= rush_factor
+            b.line_total_cny = b.unit_price_cny * qty
+        return b
+
+    requested = make(max(1, quantity))
+    breaks = sorted({*[int(x) for x in biz["quantity_breaks"]], max(1, quantity)})
+    tiers = [make(q) for q in breaks]
+
+    return Quote(
+        requested=requested,
+        tiers=tiers,
+        one_time_cny=one_time_total,
+        finish_setup_cny=finish_setup_cny,
+        lead_days=lead_days,
+        rush=rush,
+        currency=str(biz["currency"]),
+        machine_rate_cny_h=plan.machine.rate_cny_per_hour,
+        notes=notes,
+    )

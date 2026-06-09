@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CNC 自动报价 · Instant CNC Quote</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◤</span>
+      <div>
+        <h1>CNC 自动报价引擎</h1>
+        <p>上传 3D 图纸 → 几何解析 → 工艺工时 → 成本利润 → 报价单</p>
+      </div>
+    </div>
+    <div class="health" id="health"></div>
+  </header>
+
+  <main class="layout">
+    <!-- ───────── Left: 3D viewer + upload ───────── -->
+    <section class="viewer-pane">
+      <div id="drop" class="dropzone">
+        <div id="viewer" class="viewer"></div>
+        <div id="drop-hint" class="drop-hint">
+          <div class="drop-hint-inner">
+            <div class="big">拖拽 / 点击上传</div>
+            <div class="sub">.step · .stp · .igs · .iges · .stl &nbsp;(≤60MB)</div>
+          </div>
+        </div>
+        <input id="file" type="file" accept=".step,.stp,.igs,.iges,.stl" hidden />
+      </div>
+      <div class="viewer-meta" id="viewer-meta"></div>
+    </section>
+
+    <!-- ───────── Right: parameters + quote ───────── -->
+    <section class="params-pane">
+      <div class="card">
+        <h2>1 · 参数 Parameters</h2>
+
+        <div id="manual-box" class="manual hidden">
+          <p class="muted">未解析到几何 / STEP 无内核——可手动输入外形尺寸：</p>
+          <div class="grid3">
+            <label>长 L (mm)<input id="m-l" type="number" min="0" step="0.1" /></label>
+            <label>宽 W (mm)<input id="m-w" type="number" min="0" step="0.1" /></label>
+            <label>高 H (mm)<input id="m-h" type="number" min="0" step="0.1" /></label>
+          </div>
+          <label>体积 Volume (mm³, 选填)<input id="m-v" type="number" min="0" step="0.1" /></label>
+        </div>
+
+        <label>材料 Material
+          <select id="material"></select>
+        </label>
+
+        <div class="grid2">
+          <label>数量 Qty
+            <input id="quantity" type="number" min="1" value="10" />
+          </label>
+          <label>表面处理 Finish
+            <select id="finish"></select>
+          </label>
+        </div>
+
+        <div class="grid2">
+          <label>机床 Machine
+            <select id="machine">
+              <option value="">自动 Auto</option>
+            </select>
+          </label>
+          <label>最小壁厚 Min wall (mm)
+            <input id="minwall" type="number" min="0" step="0.1" placeholder="选填" />
+          </label>
+        </div>
+
+        <div class="checks">
+          <label class="chk"><input id="tight" type="checkbox" /> 精密公差 Tight tol.</label>
+          <label class="chk"><input id="fiveaxis" type="checkbox" /> 五轴 5-axis</label>
+          <label class="chk"><input id="rush" type="checkbox" /> 加急 Rush</label>
+        </div>
+
+        <div class="holes">
+          <div class="holes-head">
+            <span>孔特征 Holes / Threads</span>
+            <button id="add-hole" class="mini">+ 添加</button>
+          </div>
+          <table id="holes-table">
+            <thead><tr><th>Ø (mm)</th><th>深 Depth</th><th>数量</th><th>攻丝</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="muted tiny">STEP 通常不含公差/螺纹信息，请在此声明，否则系统会漏算成本。</p>
+        </div>
+
+        <button id="quote-btn" class="primary" disabled>生成报价 Get Quote</button>
+        <div id="error" class="error hidden"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ───────── Quote result ───────── -->
+  <section id="result" class="result hidden">
+    <div class="result-grid">
+      <div class="card">
+        <h2>几何解析 Geometry</h2>
+        <table class="kv" id="geo-table"></table>
+      </div>
+      <div class="card">
+        <h2>工艺 / 工时 Process plan</h2>
+        <table class="kv" id="plan-table"></table>
+      </div>
+      <div class="card price-card">
+        <h2>单件报价 Unit price</h2>
+        <div class="bignum" id="bignum">—</div>
+        <table class="kv" id="cost-table"></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tiers-head">
+        <h2>阶梯报价 Quantity breaks</h2>
+        <button id="pdf-btn" class="primary small">下载 PDF 报价单</button>
+      </div>
+      <table class="tiers" id="tier-table"></table>
+    </div>
+
+    <div class="card" id="warn-card">
+      <h2>工艺提示 Notes &amp; DFM</h2>
+      <ul id="warn-list"></ul>
+    </div>
+  </section>
+
+  <footer class="foot">
+    自动估算，仅供参考；最终以工程评审为准 · Auto estimate — subject to engineering review.
+  </footer>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
