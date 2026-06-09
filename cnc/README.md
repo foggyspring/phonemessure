@@ -11,6 +11,12 @@
 OpenCASCADE 时自动解析、否则降级为手动输入尺寸；几何特征（孔/螺纹/公差/薄壁/
 五轴）由前端声明 + 几何信号共同驱动，符合“STEP 通常不含 PMI 公差信息”的现实。
 
+### 🤖 AI 报价助手 AI copilot
+
+Cursor 式侧边栏 AI 助手，可**调用本系统工具代替人工**做报价/对比/DFM/改价分析，写操作
+走管理员审批（Intervention Point）。现在用离线 Mock，上线设 `AI_PROVIDER`+密钥即接入真实
+LLM（Anthropic Claude 或 OpenAI 兼容），无需改代码。详见 **[doc/ai-copilot.md](../doc/ai-copilot.md)**（含界面截图、架构图、工具清单、安全模型、上线指南）。
+
 ### 准确度模型 Accuracy model（逐层逼近真实成本）
 
 | 成本项 | 模型 |
