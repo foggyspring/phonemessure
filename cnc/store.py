@@ -50,6 +50,13 @@ CREATE TABLE IF NOT EXISTS settings (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT NOT NULL,
+    actor       TEXT,
+    action      TEXT NOT NULL,
+    detail      TEXT
+);
 CREATE TABLE IF NOT EXISTS ai_sessions (
     id          TEXT PRIMARY KEY,
     created_at  TEXT NOT NULL,
@@ -228,6 +235,20 @@ def calibration_samples(*, path: str | os.PathLike | None = None) -> list[dict]:
         rows = conn.execute(
             "SELECT material, backend, estimated_min, actual_min FROM calibration_samples"
         ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_audit(actor: str, action: str, detail: str = "",
+              *, path: str | os.PathLike | None = None) -> None:
+    with _connect(path) as conn:
+        conn.execute("INSERT INTO audit_log (created_at, actor, action, detail) VALUES (?,?,?,?)",
+                     (_now(), actor, action, detail))
+
+
+def list_audit(*, limit: int = 100, path: str | os.PathLike | None = None) -> list[dict]:
+    with _connect(path) as conn:
+        rows = conn.execute("SELECT created_at, actor, action, detail FROM audit_log "
+                            "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]
 
 

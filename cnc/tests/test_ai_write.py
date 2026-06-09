@@ -118,3 +118,16 @@ def test_ai_cost_guard_requires_login_when_live(client, monkeypatch):
     monkeypatch.setenv("AI_PUBLIC", "1")
     A._ai_calls.clear(); A._ai_calls_day.clear()
     assert client.post("/api/ai/chat", data={"message": "hi", "params": "{}"}).status_code == 200
+
+
+def test_admin_actions_are_audited(client):
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    client.put("/api/admin/price", headers=h, json={"kind": "material", "key": "AL6061",
+                                                    "field": "price_cny_per_kg", "value": 39})
+    client.post("/api/ai/approve", headers=h, json={"tool": "set_price",
+        "arguments": {"kind": "material", "key": "AL6061", "field": "price_cny_per_kg", "value": 38}})
+    audit = client.get("/api/admin/audit", headers=h).json()["audit"]
+    actions = [a["action"] for a in audit]
+    assert "set_price" in actions and any(a.startswith("ai_approve") for a in actions)
+    assert all(a["actor"] == "admin" for a in audit)
+    assert client.get("/api/admin/audit").status_code == 401   # admin-only

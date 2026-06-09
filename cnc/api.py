@@ -292,8 +292,14 @@ def build_app() -> FastAPI:
         shop, _ = _effective_shop()
         ctx = AgentContext(shop=shop, params=body.get("params") or {}, is_admin=True)
         res = dispatch(tool, body.get("arguments") or {}, ctx)
+        store.add_audit(_admin.get("u", "?"), f"ai_approve:{tool}",
+                        f"{body.get('arguments')} ok={res.get('error') is None}")
         return {"ok": res.get("error") is None, "summary": res.get("summary", ""),
                 "error": res.get("error"), "data": res.get("data")}
+
+    @app.get("/api/admin/audit")
+    def admin_audit(_admin: dict = Depends(require_admin)) -> dict:
+        return {"audit": store.list_audit()}
 
     @app.get("/api/ai/tools")
     def ai_tools() -> dict:
@@ -584,6 +590,7 @@ def build_app() -> FastAPI:
             store.set_override(kind, key, field, value)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        store.add_audit(_admin.get("u", "?"), "set_price", f"{kind}/{key}/{field}={value}")
         return {"ok": True, "kind": kind, "key": key, "field": field, "value": value}
 
     @app.get("/api/admin/overrides")
