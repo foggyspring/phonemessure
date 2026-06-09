@@ -4,10 +4,18 @@
     "AL6061": {
       "label": "铝 6061 (Aluminum 6061-T6)",
       "category": "metal",
-      "density_g_cm3": 2.70,
+      "density_g_cm3": 2.7,
       "price_cny_per_kg": 35.0,
       "machinability": 1.0,
-      "finish_ok": ["none", "bead_blast", "anodize_clear", "anodize_color", "powder_coat"]
+      "metal_basis": "AL",
+      "form_factor": 1.75,
+      "finish_ok": [
+        "none",
+        "bead_blast",
+        "anodize_clear",
+        "anodize_color",
+        "powder_coat"
+      ]
     },
     "AL7075": {
       "label": "铝 7075 (Aluminum 7075-T6)",
@@ -15,7 +23,15 @@
       "density_g_cm3": 2.81,
       "price_cny_per_kg": 62.0,
       "machinability": 1.25,
-      "finish_ok": ["none", "bead_blast", "anodize_clear", "anodize_color", "powder_coat"]
+      "metal_basis": "AL",
+      "form_factor": 3.1,
+      "finish_ok": [
+        "none",
+        "bead_blast",
+        "anodize_clear",
+        "anodize_color",
+        "powder_coat"
+      ]
     },
     "SUS304": {
       "label": "不锈钢 304 (Stainless SUS304)",
@@ -23,7 +39,14 @@
       "density_g_cm3": 7.93,
       "price_cny_per_kg": 28.0,
       "machinability": 2.5,
-      "finish_ok": ["none", "bead_blast", "passivation", "powder_coat"]
+      "metal_basis": "SS",
+      "form_factor": 2.0,
+      "finish_ok": [
+        "none",
+        "bead_blast",
+        "passivation",
+        "powder_coat"
+      ]
     },
     "SUS316": {
       "label": "不锈钢 316 (Stainless SUS316)",
@@ -31,7 +54,14 @@
       "density_g_cm3": 7.98,
       "price_cny_per_kg": 46.0,
       "machinability": 2.8,
-      "finish_ok": ["none", "bead_blast", "passivation", "powder_coat"]
+      "metal_basis": "SS",
+      "form_factor": 3.3,
+      "finish_ok": [
+        "none",
+        "bead_blast",
+        "passivation",
+        "powder_coat"
+      ]
     },
     "BRASS_C360": {
       "label": "黄铜 C360 (Brass C360)",
@@ -39,7 +69,12 @@
       "density_g_cm3": 8.49,
       "price_cny_per_kg": 70.0,
       "machinability": 0.8,
-      "finish_ok": ["none", "bead_blast"]
+      "metal_basis": "CU",
+      "form_factor": 0.93,
+      "finish_ok": [
+        "none",
+        "bead_blast"
+      ]
     },
     "COPPER_C110": {
       "label": "紫铜 C110 (Copper C110)",
@@ -47,7 +82,12 @@
       "density_g_cm3": 8.96,
       "price_cny_per_kg": 86.0,
       "machinability": 1.4,
-      "finish_ok": ["none", "bead_blast"]
+      "metal_basis": "CU",
+      "form_factor": 1.15,
+      "finish_ok": [
+        "none",
+        "bead_blast"
+      ]
     },
     "TITANIUM_TC4": {
       "label": "钛合金 TC4 (Ti-6Al-4V)",
@@ -55,7 +95,11 @@
       "density_g_cm3": 4.43,
       "price_cny_per_kg": 380.0,
       "machinability": 4.0,
-      "finish_ok": ["none", "bead_blast", "passivation"]
+      "finish_ok": [
+        "none",
+        "bead_blast",
+        "passivation"
+      ]
     },
     "POM": {
       "label": "POM 赛钢 (Delrin/Acetal)",
@@ -63,7 +107,10 @@
       "density_g_cm3": 1.41,
       "price_cny_per_kg": 32.0,
       "machinability": 0.6,
-      "finish_ok": ["none", "bead_blast"]
+      "finish_ok": [
+        "none",
+        "bead_blast"
+      ]
     },
     "ABS": {
       "label": "ABS",
@@ -71,7 +118,9 @@
       "density_g_cm3": 1.05,
       "price_cny_per_kg": 26.0,
       "machinability": 0.5,
-      "finish_ok": ["none"]
+      "finish_ok": [
+        "none"
+      ]
     },
     "PA6": {
       "label": "尼龙 PA6 (Nylon)",
@@ -79,15 +128,48 @@
       "density_g_cm3": 1.14,
       "price_cny_per_kg": 30.0,
       "machinability": 0.6,
-      "finish_ok": ["none", "bead_blast"]
+      "finish_ok": [
+        "none",
+        "bead_blast"
+      ]
     }
   },
   "finishes": {
-    "none": {"label": "无 (As-machined)", "setup_cny": 0.0, "per_dm2_cny": 0.0, "min_cny": 0.0},
-    "bead_blast": {"label": "喷砂 (Bead blast)", "setup_cny": 30.0, "per_dm2_cny": 8.0, "min_cny": 40.0},
-    "anodize_clear": {"label": "本色阳极氧化 (Clear anodize)", "setup_cny": 50.0, "per_dm2_cny": 15.0, "min_cny": 60.0},
-    "anodize_color": {"label": "彩色阳极氧化 (Color anodize)", "setup_cny": 60.0, "per_dm2_cny": 20.0, "min_cny": 75.0},
-    "powder_coat": {"label": "喷粉 (Powder coat)", "setup_cny": 40.0, "per_dm2_cny": 12.0, "min_cny": 55.0},
-    "passivation": {"label": "钝化 (Passivation)", "setup_cny": 35.0, "per_dm2_cny": 6.0, "min_cny": 45.0}
+    "none": {
+      "label": "无 (As-machined)",
+      "setup_cny": 0.0,
+      "per_dm2_cny": 0.0,
+      "min_cny": 0.0
+    },
+    "bead_blast": {
+      "label": "喷砂 (Bead blast)",
+      "setup_cny": 30.0,
+      "per_dm2_cny": 8.0,
+      "min_cny": 40.0
+    },
+    "anodize_clear": {
+      "label": "本色阳极氧化 (Clear anodize)",
+      "setup_cny": 50.0,
+      "per_dm2_cny": 15.0,
+      "min_cny": 60.0
+    },
+    "anodize_color": {
+      "label": "彩色阳极氧化 (Color anodize)",
+      "setup_cny": 60.0,
+      "per_dm2_cny": 20.0,
+      "min_cny": 75.0
+    },
+    "powder_coat": {
+      "label": "喷粉 (Powder coat)",
+      "setup_cny": 40.0,
+      "per_dm2_cny": 12.0,
+      "min_cny": 55.0
+    },
+    "passivation": {
+      "label": "钝化 (Passivation)",
+      "setup_cny": 35.0,
+      "per_dm2_cny": 6.0,
+      "min_cny": 45.0
+    }
   }
 }

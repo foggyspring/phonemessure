@@ -307,7 +307,11 @@ function refreshFinishes(prefer) {
 
 function updateMatPrice() {
   const m = state.shop?.materials[$("material").value];
-  $("mat-price").textContent = m ? `当前料价 ¥${m.price_cny_per_kg}/kg · 密度 ${m.density_g_cm3} g/cm³` : "";
+  if (!m) { $("mat-price").textContent = ""; return; }
+  const live = m.price_source && m.price_source !== "static";
+  const src = m.price_source === "manual override" ? "手动改价"
+    : live ? "实时 " + m.price_source : "静态参考价";
+  $("mat-price").textContent = `料价 ¥${m.price_cny_per_kg}/kg · 密度 ${m.density_g_cm3} g/cm³ · ${src}`;
 }
 
 // ───────────────────────── holes table ─────────────────────────
@@ -466,8 +470,12 @@ function renderResult(p, isLive) {
     `× ${r.quantity} 件 · 净额 ${money(q.net_total_cny != null ? q.net_total_cny : r.line_total_cny, cur)}` +
     ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
     ` · 交期 ${q.lead_days} 天${q.rush ? " 加急" : ""}${valid}`;
+  const psrc = p.input?.price_source;
+  const matLabel = psrc && psrc !== "static"
+    ? `材料费 Material <span class="muted tiny">(${psrc === "manual override" ? "改价" : psrc.split(" ")[0]})</span>`
+    : "材料费 Material";
   $("cost-table").innerHTML = kv([
-    ["材料费 Material", money(r.material_cny, cur)],
+    [matLabel, money(r.material_cny, cur)],
     ["加工费 Machining", money(r.machining_cny, cur)],
     ["表面处理 Finishing", money(r.finish_variable_cny, cur)],
     ["编程摊销 Setup/ea", money(r.amortized_one_time_cny, cur)],

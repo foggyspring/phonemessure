@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import auth, store
 from .engine import ShopData, apply_overrides, load
+from .pricing import apply_market_prices, get_price_service
 from .geometry import GeometryError, MeshMetrics
 from .geometry.parser import (
     KernelUnavailable,
@@ -40,9 +41,20 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 MAX_UPLOAD_BYTES = 60 * 1024 * 1024  # 60 MB — reject monster assemblies early
 
 
-def _effective_shop() -> ShopData:
-    """Base reference data with any runtime price/rate overrides applied."""
-    return apply_overrides(load(), store.get_overrides())
+def _effective_shop() -> tuple[ShopData, dict]:
+    """Reference data with live market prices then manual overrides applied.
+
+    Precedence: manual override > live market feed > static base. Returns the
+    shop plus a {material_key: price_source} map for transparency in the quote.
+    """
+    base = load()
+    market_shop, sources = apply_market_prices(base, get_price_service())
+    overrides = store.get_overrides()
+    shop = apply_overrides(market_shop, overrides)
+    for k in (overrides.get("material") or {}):
+        if "price_cny_per_kg" in overrides["material"][k]:
+            sources[k] = "manual override"
+    return shop, sources
 
 
 def _seed_admin() -> None:
@@ -175,9 +187,33 @@ def build_app() -> FastAPI:
         from . import estimators
         return {"available": estimators.backend_status(), "options": list(estimators.BACKENDS)}
 
+    @app.get("/api/prices")
+    def prices() -> dict:
+        """Current effective material ¥/kg and where each came from."""
+        shop, sources = _effective_shop()
+        svc = get_price_service()
+        feed = svc.feed.name if svc and svc.feed else "static"
+        quotes = {m: {"cny_per_kg": q.cny_per_kg, "source": q.source, "asof": q.asof}
+                  for m, q in (svc.quotes().items() if svc else [])}
+        return {
+            "feed": feed,
+            "metal_quotes": quotes,
+            "materials": {
+                k: {"price_cny_per_kg": m.price_cny_per_kg, "source": sources.get(k, "static")}
+                for k, m in shop.materials.items()
+            },
+        }
+
+    @app.post("/api/prices/refresh")
+    def prices_refresh(_admin: dict = Depends(require_admin)) -> dict:
+        svc = get_price_service()
+        q = svc.quotes(force=True) if svc else {}
+        return {"feed": svc.feed.name if svc and svc.feed else "static",
+                "refreshed": len(q), "metals": sorted(q)}
+
     @app.get("/api/materials")
     def materials() -> dict:
-        shop = _effective_shop()
+        shop, sources = _effective_shop()
         return {
             "materials": {
                 k: {
@@ -185,6 +221,7 @@ def build_app() -> FastAPI:
                     "category": m.category,
                     "density_g_cm3": m.density_g_cm3,
                     "price_cny_per_kg": m.price_cny_per_kg,
+                    "price_source": sources.get(k, "static"),
                     "finish_ok": list(m.finish_ok),
                 }
                 for k, m in shop.materials.items()
@@ -230,9 +267,10 @@ def build_app() -> FastAPI:
 
         try:
             req = QuoteRequest.from_payload(p)
+            eff_shop, price_sources = _effective_shop()
             payload = build_quote(
-                metrics, req, shop=_effective_shop(),
-                mesh_stl=mesh_stl, backend=str(p.get("backend", "auto")),
+                metrics, req, shop=eff_shop, mesh_stl=mesh_stl,
+                backend=str(p.get("backend", "auto")), price_sources=price_sources,
             )
         except QuoteError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

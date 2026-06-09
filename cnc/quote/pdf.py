@@ -146,6 +146,8 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
     dims = geo["dims_mm"]
     spec_rows = [
         ["材料 Material", inp["material_label"]],
+        ["料价 Material price",
+         f"¥{inp.get('material_price_cny_per_kg', 0):.2f}/kg · {inp.get('price_source', 'static')}"],
         ["数量 Quantity", str(req["quantity"])],
         ["表面处理 Finish", inp["finish_label"]],
         ["公差 Tolerance", "精密 Tight" if inp["tight_tolerance"] else "标准 Standard"],

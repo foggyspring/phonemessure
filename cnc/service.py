@@ -71,6 +71,7 @@ def build_quote(
     *,
     mesh_stl: bytes | None = None,
     backend: str = "auto",
+    price_sources: dict | None = None,
 ) -> dict:
     shop = shop or load()
 
@@ -150,6 +151,8 @@ def build_quote(
             "rush": req.rush,
             "units": req.units,
             "customer": req.customer,
+            "material_price_cny_per_kg": material.price_cny_per_kg,
+            "price_source": (price_sources or {}).get(material.key, "static"),
             "holes": [
                 {
                     "diameter_mm": h.diameter_mm,

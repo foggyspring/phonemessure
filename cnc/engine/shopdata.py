@@ -21,9 +21,11 @@ class Material:
     label: str
     category: str
     density_g_cm3: float
-    price_cny_per_kg: float
+    price_cny_per_kg: float          # finished-stock ¥/kg (static fallback)
     machinability: float
     finish_ok: tuple[str, ...]
+    metal_basis: str | None = None   # exchange metal for live pricing (AL/CU/SS/…)
+    form_factor: float = 0.0         # spot → finished bar/plate multiplier
 
 
 @dataclass(frozen=True)
@@ -86,6 +88,8 @@ def load(data_dir: str | None = None) -> ShopData:
             price_cny_per_kg=v["price_cny_per_kg"],
             machinability=v["machinability"],
             finish_ok=tuple(v["finish_ok"]),
+            metal_basis=v.get("metal_basis"),
+            form_factor=float(v.get("form_factor", 0.0)),
         )
         for k, v in mats_raw["materials"].items()
     }
