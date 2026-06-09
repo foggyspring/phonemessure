@@ -26,8 +26,8 @@ def test_save_and_get_roundtrip(tmp_path):
 def test_list_orders_newest_first(tmp_path):
     db = tmp_path / "q.db"
     ids = [store.save_quote(_payload(), path=db) for _ in range(3)]
-    rows = store.list_quotes(path=db)
-    assert len(rows) == 3
+    rows, total = store.list_quotes(path=db)
+    assert len(rows) == 3 and total == 3
     assert rows[0]["id"] == ids[-1]          # newest first
     assert rows[0]["material"] == "AL6061"
     assert rows[0]["unit_price"] > 0
