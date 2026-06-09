@@ -50,8 +50,12 @@ def _db_path(path: str | os.PathLike | None = None) -> Path:
 def _connect(path: str | os.PathLike | None = None) -> sqlite3.Connection:
     p = _db_path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(p))
+    conn = sqlite3.connect(str(p), timeout=5.0)
     conn.row_factory = sqlite3.Row
+    # WAL + a busy timeout keep concurrent quote-saves from hitting
+    # "database is locked" under request bursts (writers wait, not fail).
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript(_SCHEMA)
     return conn
 

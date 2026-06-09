@@ -161,6 +161,8 @@ def build_app() -> FastAPI:
             p = json.loads(params)
         except json.JSONDecodeError as exc:
             raise HTTPException(status_code=400, detail=f"bad params JSON: {exc}") from exc
+        if not isinstance(p, dict):
+            raise HTTPException(status_code=400, detail="params must be a JSON object")
 
         data = _read_capped(file) if file is not None else None
         manual = p.get("manual_dims")
