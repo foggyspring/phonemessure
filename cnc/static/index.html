@@ -27,7 +27,7 @@
     <div class="top-actions">
       <div class="health" id="health"><span class="dot pending"></span> 连接中…</div>
       <span class="user-chip hidden" id="user-chip"></span>
-      <button id="admin-btn" class="ghost-btn" title="维护材料单价 / 机床时租">⚙ 价格维护</button>
+      <button id="admin-btn" class="ghost-btn" title="维护材料单价 / 机床时租">价格维护</button>
       <button id="logout-btn" class="ghost-btn hidden" title="退出登录">退出</button>
     </div>
   </header>
@@ -40,13 +40,13 @@
 
         <div class="viewer-toolbar" id="viewer-toolbar" hidden>
           <button id="toggle-bbox" class="vt-btn active" title="显示/隐藏包围盒">□ 包围盒</button>
-          <button id="toggle-spin" class="vt-btn" title="自动旋转">↻ 旋转</button>
-          <button id="reset-view" class="vt-btn" title="复位视角">⊹ 复位</button>
+          <button id="toggle-spin" class="vt-btn" title="自动旋转">旋转</button>
+          <button id="reset-view" class="vt-btn" title="复位视角">复位</button>
         </div>
 
         <div id="drop-hint" class="drop-hint">
           <div class="drop-hint-inner">
-            <div class="icon">⬚</div>
+            <div class="icon">□</div>
             <div class="big">拖拽 / 点击上传 3D 图纸</div>
             <div class="sub">.step · .stp · .igs · .iges · .stl &nbsp;(≤60MB)</div>
           </div>
@@ -173,14 +173,14 @@
         <button id="quote-btn" class="primary" disabled>
           <span class="btn-label">生成报价 Get Quote</span>
         </button>
-        <button id="ai-analyze-btn" class="ghost-btn" style="width:100%;margin-top:8px">🤖 AI 全面分析</button>
+        <button id="ai-analyze-btn" class="ghost-btn" style="width:100%;margin-top:8px">AI 全面分析</button>
         <p class="muted tiny center" id="live-hint" hidden>参数改动会实时预览，点按钮可存入历史</p>
       </div>
 
       <div class="card">
         <div class="hist-head">
           <h2>最近报价 Recent quotes</h2>
-          <button id="hist-refresh" class="mini">↻ 刷新</button>
+          <button id="hist-refresh" class="mini">刷新</button>
         </div>
         <table class="hist" id="hist-table"><tbody></tbody></table>
         <p class="muted tiny" id="hist-empty">暂无历史 · 生成报价后自动保存</p>
@@ -208,7 +208,7 @@
       <div class="card price-card">
         <h3>单件报价 Unit price</h3>
         <div class="bignum" id="bignum">—</div>
-        <button id="ask-why-btn" class="ai-chip" style="margin:4px 0">🤖 问 AI 为什么这个价</button>
+        <button id="ask-why-btn" class="ai-chip" style="margin:4px 0">问 AI 为什么这个价</button>
         <div class="bignum-sub" id="bignum-sub"></div>
         <div class="conf" id="conf-badge"></div>
         <div class="logistics" id="logistics"></div>
@@ -222,8 +222,8 @@
       <div class="tiers-head">
         <h3>阶梯报价 Quantity breaks</h3>
         <div style="display:flex;gap:8px">
-          <button id="compare-btn" class="ghost-btn">⇄ 比较材料</button>
-          <button id="pdf-btn" class="primary small">⬇ 下载 PDF 报价单</button>
+          <button id="compare-btn" class="ghost-btn">比较材料</button>
+          <button id="pdf-btn" class="primary small">下载 PDF 报价单</button>
         </div>
       </div>
       <table class="tiers" id="tier-table"></table>
@@ -255,7 +255,7 @@
     <div class="modal">
       <div class="modal-head">
         <h2>价格维护 Price maintenance</h2>
-        <button id="admin-close" class="icon-btn">✕</button>
+        <button id="admin-close" class="icon-btn">×</button>
       </div>
       <p class="muted tiny">改动立即对新报价生效（叠加在基础数据上，不改源文件）。</p>
       <h3>材料单价 Material ¥/kg</h3>
@@ -273,7 +273,7 @@
     <div class="modal modal-sm">
       <div class="modal-head">
         <h2>登录 Sign in</h2>
-        <button id="login-close" class="icon-btn">✕</button>
+        <button id="login-close" class="icon-btn">×</button>
       </div>
       <p class="muted tiny">价格维护需要管理员权限。</p>
       <label>用户名 Username
@@ -292,16 +292,16 @@
   <div id="toast-wrap" class="toast-wrap"></div>
 
   <!-- ───────── AI copilot sidebar (Cursor-style) ───────── -->
-  <button id="ai-fab" class="ai-fab" title="AI 报价助手">🤖<span>AI 助手</span></button>
+  <button id="ai-fab" class="ai-fab" title="AI 报价助手">AI 助手</button>
   <aside id="ai-panel" class="ai-panel hidden" aria-label="AI copilot">
     <div class="ai-head">
       <div>
-        <div class="ai-title">🤖 AI 报价助手</div>
+        <div class="ai-title">AI 报价助手</div>
         <div class="ai-status" id="ai-status">连接中…</div>
       </div>
       <div style="display:flex;gap:8px">
-        <button id="ai-new" class="icon-btn" title="新对话">🗒️</button>
-        <button id="ai-close" class="icon-btn">✕</button>
+        <button id="ai-new" class="icon-btn" title="新对话">新</button>
+        <button id="ai-close" class="icon-btn">×</button>
       </div>
     </div>
     <div class="ai-messages" id="ai-messages">

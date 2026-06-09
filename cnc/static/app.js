@@ -326,7 +326,7 @@ function addHoleRow(d = 6, depth = 10, count = 1, threaded = false) {
     `<td><input type="number" class="h-depth" min="0" step="0.1" value="${depth}"></td>` +
     `<td><input type="number" class="h-count" min="1" step="1" value="${count}"></td>` +
     `<td style="text-align:center"><input type="checkbox" class="h-thread" ${threaded ? "checked" : ""}></td>` +
-    `<td><button class="row-del" title="删除">✕</button></td>`;
+    `<td><button class="row-del" title="删除">×</button></td>`;
   tr.querySelector(".row-del").addEventListener("click", () => { tr.remove(); scheduleLiveQuote(); });
   tr.querySelectorAll("input").forEach((i) => i.addEventListener("input", scheduleLiveQuote));
   tb.appendChild(tr);
@@ -436,12 +436,12 @@ function countUp(el, from, to, cur) {
 }
 
 const DFM_RULES = [
-  { re: /风险|变形|断丝|过小|振动|啄钻|peck/i, level: "warn", ico: "⚠️" },
-  { re: /无法|不可|超限|必须/i, level: "danger", ico: "⛔" },
+  { re: /风险|变形|断丝|过小|振动|啄钻|peck/i, level: "warn", ico: "" },
+  { re: /无法|不可|超限|必须/i, level: "danger", ico: "" },
 ];
 function classifyDFM(text) {
   for (const r of DFM_RULES) if (r.re.test(text)) return r;
-  return { level: "info", ico: "ℹ️" };
+  return { level: "info", ico: "" };
 }
 
 function renderResult(p, isLive) {
@@ -519,22 +519,22 @@ function renderResult(p, isLive) {
   $("tier-table").innerHTML = rows;
 
   // Structured DFM findings (graded), then lighter cost/process notes.
-  const SEV = { high: { c: "warn", ico: "⛔", t: "高" }, medium: { c: "warn", ico: "⚠️", t: "中" },
-                low: { c: "info", ico: "ℹ️", t: "低" }, info: { c: "info", ico: "💡", t: "" } };
+  const SEV = { high: { c: "warn", t: "高" }, medium: { c: "warn", t: "中" },
+                low: { c: "info", t: "低" }, info: { c: "info", t: "" } };
   const dfm = p.dfm || [];
   const hasRisk = dfm.some((d) => d.severity === "high" || d.severity === "medium");
   const dfmHtml = dfm.map((d) => {
     const s = SEV[d.severity] || SEV.info;
     const badge = s.t ? `<span class="sev-badge ${d.severity}">${s.t}</span>` : "";
-    return `<li class="${s.c}"><span class="w-ico">${s.ico}</span><span>${badge}<b>${esc(d.title)}</b> — ${esc(d.detail)}
+    return `<li class="${s.c}"><span>${badge}<b>${esc(d.title)}</b> — ${esc(d.detail)}
       <span class="muted tiny">建议：${esc(d.suggestion)}</span></span></li>`;
   }).join("");
   const notes = [...(q.notes || []), ...(pl.notes || [])];
   const noteHtml = notes.map((n) => `<li class="info"><span class="w-ico">·</span><span class="muted">${esc(n)}</span></li>`).join("");
   $("warn-list").innerHTML = (dfmHtml + noteHtml) ||
-    `<li class="info"><span class="w-ico">✅</span><span>无明显可加工性风险 No DFM flags</span></li>`;
+    `<li class="info"><span>无明显可加工性风险 No DFM flags</span></li>`;
   if (dfm.length) $("warn-card").querySelector("h3").textContent =
-    hasRisk ? "工艺提示 Notes & DFM ⚠" : "工艺提示 Notes & DFM";
+    hasRisk ? "工艺提示 Notes & DFM（有风险）" : "工艺提示 Notes & DFM";
 
   renderEstimator(p);
   renderCalibration(p, isLive);
@@ -563,7 +563,7 @@ async function loadAIStatus() {
     const n = (t.tools || []).length;
     $("ai-foot").innerHTML =
       `可调用 ${n} 项工具（报价/对比/DFM/改价等）；改价等写操作需管理员审批。<br>` +
-      "⚠ AI 结果仅供参考，重要报价请人工复核；勿在对话中输入敏感信息。";
+      "注意：AI 结果仅供参考，重要报价请人工复核；勿在对话中输入敏感信息。";
   } catch { /* ignore */ }
 }
 
@@ -611,26 +611,25 @@ async function sendAI() {
 }
 
 const AI_TOOL_META = {
-  get_quote: { ico: "💰", label: "报价" }, compare_materials: { ico: "⚖️", label: "材料对比" },
-  suggest_cheaper_material: { ico: "💡", label: "更省建议" }, analyze_dfm: { ico: "🔍", label: "DFM 分析" },
-  list_materials: { ico: "📋", label: "材料列表" }, set_price: { ico: "✏️", label: "改价" },
-  record_actual_time: { ico: "🎯", label: "录入实测工时" },
-  explain_quote: { ico: "💬", label: "成本解释" },
+  get_quote: { label: "报价" }, compare_materials: { label: "材料对比" },
+  suggest_cheaper_material: { label: "更省建议" }, analyze_dfm: { label: "DFM 分析" },
+  list_materials: { label: "材料列表" }, set_price: { label: "改价" },
+  record_actual_time: { label: "录入实测工时" }, explain_quote: { label: "成本解释" },
 };
 
 function renderAIAction(a) {
-  const m = AI_TOOL_META[a.tool] || { ico: "🔧", label: a.tool };
+  const m = AI_TOOL_META[a.tool] || { label: a.tool };
   const args = Object.entries(a.arguments || {}).map(([k, v]) => `${k}=${v}`).join(" ");
   const card = document.createElement("div");
   card.className = "ai-action" + (a.error ? " err" : "");
   card.innerHTML =
-    `<div class="ai-action-head">${m.ico} <b>${esc(m.label)}</b>` +
+    `<div class="ai-action-head"><b>${esc(m.label)}</b>` +
     (args ? ` <span class="ai-args">${esc(args)}</span>` : "") +
-    (a.error ? ` <span class="ai-err">⚠ ${esc(a.error)}</span>` : ` <span class="ai-ok">✓</span>`) +
+    (a.error ? ` <span class="ai-err">错误 ${esc(a.error)}</span>` : ` <span class="ai-ok">完成</span>`) +
     `</div><div class="ai-action-body">${esc(a.summary || "")}</div>`;
   if (a.tool === "get_quote" && a.arguments && !a.error) {
     const btn = document.createElement("button");
-    btn.className = "ai-apply"; btn.textContent = "↪ 应用到表单并报价";
+    btn.className = "ai-apply"; btn.textContent = "应用到表单并报价";
     btn.addEventListener("click", () => applyAIQuote(a.arguments));
     card.appendChild(btn);
   }
@@ -639,17 +638,17 @@ function renderAIAction(a) {
 }
 
 function renderAIPending(pending) {
-  const m = AI_TOOL_META[pending.tool] || { ico: "✏️", label: pending.tool };
+  const m = AI_TOOL_META[pending.tool] || { label: pending.tool };
   const args = Object.entries(pending.arguments || {}).map(([k, v]) => `${k}=${v}`).join(" ");
   const card = document.createElement("div");
   card.className = "ai-action pending";
   card.innerHTML =
-    `<div class="ai-action-head">${m.ico} <b>待确认：${esc(m.label)}</b></div>` +
+    `<div class="ai-action-head"><b>待确认：${esc(m.label)}</b></div>` +
     `<div class="ai-action-body">${esc(pending.description || "")}<br><span class="ai-args">${esc(args)}</span></div>`;
   const row = document.createElement("div");
   row.className = "ai-approve-row";
-  const ok = document.createElement("button"); ok.className = "ai-confirm"; ok.textContent = "✓ 确认执行";
-  const no = document.createElement("button"); no.className = "ai-reject"; no.textContent = "✕ 取消";
+  const ok = document.createElement("button"); ok.className = "ai-confirm"; ok.textContent = "确认执行";
+  const no = document.createElement("button"); no.className = "ai-reject"; no.textContent = "取消";
   ok.addEventListener("click", () => { approveAI(pending); card.remove(); });
   no.addEventListener("click", () => { card.remove(); appendAIMsg("bot", "已取消该操作。"); });
   row.append(ok, no); card.appendChild(row);
@@ -666,7 +665,7 @@ async function approveAI(pending) {
     });
     if (r.status === 401 || r.status === 403) { logout(); openLogin(); return; }
     const d = await r.json();
-    appendAIMsg("bot", (d.ok ? "✅ " : "⚠ ") + (d.summary || (d.ok ? "已执行" : "执行失败")));
+    appendAIMsg("bot", d.summary || (d.ok ? "已执行" : "执行失败"));
     if (d.ok) { loadShop(); if (state.hasQuoted) requestQuote(false); }
   } catch (e) { appendAIMsg("bot", "网络错误：" + e.message); }
 }
@@ -685,7 +684,7 @@ function applyAIQuote(args) {
 async function aiAnalyze() {
   if (!state.file && !manualDims()) { toast("请先上传零件或填写尺寸", "err"); return; }
   openAIPanel();
-  appendAIMsg("user", "🤖 全面分析这个零件");
+  appendAIMsg("user", "全面分析这个零件");
   const typing = appendAITyping();
   try {
     const fd = new FormData();
@@ -695,7 +694,7 @@ async function aiAnalyze() {
     typing.remove();
     (d.sections || []).forEach((s) =>
       renderAIAction({ tool: s.tool, arguments: {}, summary: s.summary, error: s.error }));
-    if (d.recommendation) appendAIMsg("bot", "📋 综合建议：\n" + d.recommendation);
+    if (d.recommendation) appendAIMsg("bot", "综合建议：\n" + d.recommendation);
   } catch (e) { typing.remove(); appendAIMsg("bot", "分析失败：" + e.message); }
 }
 
@@ -902,7 +901,7 @@ function authHeaders(extra) {
 function setAuthUI() {
   const chip = $("user-chip"), logout = $("logout-btn");
   if (state.user) {
-    chip.textContent = "👤 " + state.user;
+    chip.textContent = state.user;
     chip.classList.remove("hidden");
     logout.classList.remove("hidden");
   } else {
@@ -1013,8 +1012,7 @@ function toast(msg, kind = "info", ttl = 3200) {
   const wrap = $("toast-wrap");
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
-  const ico = kind === "ok" ? "✅" : kind === "err" ? "⛔" : "ℹ️";
-  el.innerHTML = `<span>${ico}</span><span>${msg}</span>`;
+  el.innerHTML = `<span class="t-dot"></span><span>${msg}</span>`;
   wrap.appendChild(el);
   setTimeout(() => { el.classList.add("fade-out"); setTimeout(() => el.remove(), 350); }, ttl);
 }

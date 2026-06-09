@@ -82,7 +82,7 @@ class MockProvider(LLMProvider):
             summaries = [m.get("summary") or m.get("content", "")
                          for m in messages if m.get("role") == "tool"
                          and _after_last_user(messages, m)]
-            text = "✅ 已完成：\n" + "\n".join(f"· {s}" for s in summaries if s)
+            text = "已完成：\n" + "\n".join(f"· {s}" for s in summaries if s)
             return AssistantTurn(text=text, done=True)
 
         # Phase 1: plan tool calls from the latest user message.

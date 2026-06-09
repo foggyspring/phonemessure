@@ -305,8 +305,8 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
     dfm = [d for d in payload.get("dfm", []) if d.get("severity") in ("high", "medium")]
     if dfm:
         flow.append(Paragraph("<b>可加工性提示 DFM findings</b>", body))
-        _sev = {"high": ("⛔ 高", colors.Color(0.85, 0.33, 0.31)),
-                "medium": ("⚠ 中", colors.Color(0.88, 0.57, 0.18))}
+        _sev = {"high": ("高", colors.Color(0.85, 0.33, 0.31)),
+                "medium": ("中", colors.Color(0.88, 0.57, 0.18))}
         for d in dfm:
             tag, col = _sev[d["severity"]]
             flow.append(Paragraph(

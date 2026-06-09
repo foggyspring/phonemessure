@@ -26,7 +26,7 @@ def test_analyze_runs_multiple_tools():
     out = run_agent("帮我分析这个零件", _ctx())
     tools = [a["tool"] for a in out["actions"]]
     assert "get_quote" in tools and "analyze_dfm" in tools
-    assert out["reply"].startswith("✅")
+    assert out["reply"].startswith("已完成")
 
 
 def test_history_is_threaded():
