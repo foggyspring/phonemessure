@@ -10,10 +10,14 @@ from __future__ import annotations
 
 def score_quote(*, backend: str, complexity: float, holes_auto: bool, wall_auto: bool,
                 undercut_frac: float, near_envelope: bool, has_mesh: bool,
-                calibration_n: int) -> dict:
+                calibration_n: int, dim_suspect: bool = False) -> dict:
     score = 90.0
     reasons: list[str] = []
 
+    if dim_suspect:
+        # implausible size ⇒ probable unit error ⇒ the quote is not trustworthy
+        score -= 45
+        reasons.append("尺寸异常，单位疑似有误（请核对）")
     if not has_mesh:
         score -= 15; reasons.append("手动输入尺寸，无三维模型")
     if backend == "analytic":

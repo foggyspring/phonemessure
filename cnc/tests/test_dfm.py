@@ -50,3 +50,14 @@ def test_dfm_present_in_quote_payload():
                     QuoteRequest(material="AL6061", quantity=1, min_wall_mm=0.4))
     assert isinstance(q["dfm"], list) and q["dfm"]
     assert any(d["code"] == "thin_wall" for d in q["dfm"])
+
+
+def test_unit_suspect_on_sub_3mm_part():
+    # real-world: web models in inch/metre/normalised units → a sub-3mm "part".
+    m = metrics_from_stl_bytes(cube_stl(0.16))
+    dfm = analyze_dfm(m, analyze(m))
+    f = next((d for d in dfm if d["code"] == "unit_suspect"), None)
+    assert f and f["severity"] == "high" and "25.4" in f["detail"]
+    # a normal part has no unit-suspect flag
+    assert not any(d["code"] == "unit_suspect" for d in analyze_dfm(
+        metrics_from_stl_bytes(cube_stl(50.0)), analyze(metrics_from_stl_bytes(cube_stl(50.0)))))

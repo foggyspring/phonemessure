@@ -278,3 +278,14 @@ def test_material_comparison_on_demand():
     prices = [r["unit_price_cny"] for r in rows]
     assert prices == sorted(prices)                  # cheapest first
     assert all({"key", "density_g_cm3", "machinability"} <= set(r) for r in rows)
+
+
+def test_unit_suspect_part_is_low_confidence():
+    # a sub-3mm part is almost certainly a unit error → confidence must be low
+    tiny = build_quote(metrics_from_stl_bytes(cube_stl(0.2)),
+                       QuoteRequest(material="AL6061", quantity=10))
+    assert tiny["confidence"]["level"] == "low"
+    assert any("单位" in r for r in tiny["confidence"]["reasons"])
+    # normal part is not penalised
+    ok = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=10))
+    assert ok["confidence"]["score"] > tiny["confidence"]["score"]

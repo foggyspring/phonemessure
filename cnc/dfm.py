@@ -38,6 +38,15 @@ def analyze_dfm(
     longest, shortest = dims[2], dims[0]
     auto = "（自动检测 auto）" if wall_auto else ""
 
+    # ---- dimension sanity: a sub-3mm whole part is almost always a unit error ----
+    # (real validation: web models in inches/metres/normalised units quoted a
+    # 0.16mm 'bunny' confidently). Flag prominently with a rescale hint.
+    if 0 < longest < 3.0:
+        out.append(_f("high", "unit_suspect", "尺寸异常·单位疑似有误 Unit suspect",
+                      f"最大尺寸仅 {longest:.2f}mm，远小于常规加工件。"
+                      f"若图纸为英寸，×25.4 后约 {longest*25.4:.0f}mm。",
+                      "请确认上传单位：英寸请在单位选择器选 inch，或重新导出为 mm 后再报价。"))
+
     if holes_auto and feat.holes:
         n = sum(h.count for h in feat.holes)
         out.append(_f("info", "holes_auto", "自动识别孔 Auto-detected holes",
