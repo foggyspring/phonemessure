@@ -7,6 +7,25 @@ uvicorn[standard]>=0.32
 python-multipart>=0.0.9
 reportlab>=4.2
 
+# --- Optional: high-precision toolpath-simulation estimator --------------
+# Unlocks the "toolpath" backend (real Z-level roughing + waterline finishing
+# by simulating toolpaths). Without these the system uses the analytic
+# (V/MRR) backend automatically. scipy+networkx are needed by trimesh for
+# mesh sectioning; opencamlib adds drop-cutter surface finishing.
+#   trimesh>=4.0
+#   shapely>=2.0
+#   scipy>=1.10
+#   networkx>=3.0
+#   opencamlib        # optional, C++ ext; surface drop-cutter
+#
+# pip install trimesh shapely scipy networkx
+
+# --- Optional: tier-1 CAM via FreeCAD ------------------------------------
+# The "freecad" backend shells out to freecadcmd to generate real G-code and
+# integrate true cycle time. FreeCAD ships via conda/AppImage (no pip wheel):
+#   conda install -c conda-forge freecad     # provides `freecadcmd`
+# Then it is auto-detected; otherwise the system falls back to toolpath/analytic.
+
 # --- Optional: B-rep (STEP / IGES) parsing -------------------------------
 # STL parses out of the box. To also read .step/.stp/.igs/.iges you need the
 # OpenCASCADE kernel, which is a conda package (no pip wheel):

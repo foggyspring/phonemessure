@@ -119,6 +119,11 @@ def build_app() -> FastAPI:
             kernel = False
         return {"ok": True, "brep_kernel": kernel}
 
+    @app.get("/api/backends")
+    def backends() -> dict:
+        from . import estimators
+        return {"available": estimators.backend_status(), "options": list(estimators.BACKENDS)}
+
     @app.get("/api/materials")
     def materials() -> dict:
         shop = _effective_shop()
@@ -161,9 +166,21 @@ def build_app() -> FastAPI:
         manual = p.get("manual_dims")
         metrics, extra = _metrics_from_request(data, file.filename if file else None, manual)
 
+        # A triangle mesh (STL bytes) unlocks the toolpath-simulation backend:
+        # native STL directly, or the OCCT-tessellated STL for STEP/IGES.
+        mesh_stl: bytes | None = None
+        if extra.get("source_format") == "stl":
+            mesh_stl = data
+        elif extra.get("preview_stl_b64"):
+            import base64
+            mesh_stl = base64.b64decode(extra["preview_stl_b64"])
+
         try:
             req = QuoteRequest.from_payload(p)
-            payload = build_quote(metrics, req, shop=_effective_shop())
+            payload = build_quote(
+                metrics, req, shop=_effective_shop(),
+                mesh_stl=mesh_stl, backend=str(p.get("backend", "auto")),
+            )
         except QuoteError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except (KeyError, ValueError) as exc:

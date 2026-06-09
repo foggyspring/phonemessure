@@ -1,0 +1,25 @@
+{
+  "_comment": "Feeds/speeds + tool geometry for the toolpath-simulation estimator. Feeds in mm/min, lengths in mm. These are the physical parameters a real CAM uses; the simulator multiplies toolpath length by them to get cycle time, so they replace the coarse 'machinability' scalar of the analytic backend. Per-material rows; tune to your shop's cutting data / tool library.",
+  "tools": {
+    "rough_endmill_d_mm": 10.0,
+    "rough_stepover_frac": 0.45,
+    "finish_endmill_d_mm": 6.0,
+    "finish_stepover_mm": 0.35,
+    "rapid_mm_min": 12000.0,
+    "retract_mm": 2.0,
+    "tool_change_s": 8.0
+  },
+  "materials": {
+    "AL6061":       {"rough_feed_mm_min": 2500, "finish_feed_mm_min": 2000, "rough_stepdown_mm": 2.5, "finish_stepdown_mm": 0.6, "plunge_feed_mm_min": 900, "drill_feed_mm_min": 320, "tap_feed_mm_min": 500},
+    "AL7075":       {"rough_feed_mm_min": 2000, "finish_feed_mm_min": 1600, "rough_stepdown_mm": 2.0, "finish_stepdown_mm": 0.5, "plunge_feed_mm_min": 800, "drill_feed_mm_min": 260, "tap_feed_mm_min": 420},
+    "SUS304":       {"rough_feed_mm_min": 800,  "finish_feed_mm_min": 650,  "rough_stepdown_mm": 1.0, "finish_stepdown_mm": 0.3, "plunge_feed_mm_min": 300, "drill_feed_mm_min": 90,  "tap_feed_mm_min": 150},
+    "SUS316":       {"rough_feed_mm_min": 700,  "finish_feed_mm_min": 550,  "rough_stepdown_mm": 0.9, "finish_stepdown_mm": 0.3, "plunge_feed_mm_min": 260, "drill_feed_mm_min": 80,  "tap_feed_mm_min": 130},
+    "BRASS_C360":   {"rough_feed_mm_min": 3000, "finish_feed_mm_min": 2400, "rough_stepdown_mm": 2.8, "finish_stepdown_mm": 0.6, "plunge_feed_mm_min": 1000,"drill_feed_mm_min": 380, "tap_feed_mm_min": 600},
+    "COPPER_C110":  {"rough_feed_mm_min": 1400, "finish_feed_mm_min": 1100, "rough_stepdown_mm": 1.6, "finish_stepdown_mm": 0.4, "plunge_feed_mm_min": 500, "drill_feed_mm_min": 180, "tap_feed_mm_min": 300},
+    "TITANIUM_TC4": {"rough_feed_mm_min": 450,  "finish_feed_mm_min": 360,  "rough_stepdown_mm": 0.6, "finish_stepdown_mm": 0.2, "plunge_feed_mm_min": 160, "drill_feed_mm_min": 55,  "tap_feed_mm_min": 90},
+    "POM":          {"rough_feed_mm_min": 3500, "finish_feed_mm_min": 2800, "rough_stepdown_mm": 3.0, "finish_stepdown_mm": 0.7, "plunge_feed_mm_min": 1200,"drill_feed_mm_min": 450, "tap_feed_mm_min": 700},
+    "ABS":          {"rough_feed_mm_min": 4000, "finish_feed_mm_min": 3200, "rough_stepdown_mm": 3.5, "finish_stepdown_mm": 0.8, "plunge_feed_mm_min": 1400,"drill_feed_mm_min": 500, "tap_feed_mm_min": 800},
+    "PA6":          {"rough_feed_mm_min": 3500, "finish_feed_mm_min": 2800, "rough_stepdown_mm": 3.0, "finish_stepdown_mm": 0.7, "plunge_feed_mm_min": 1200,"drill_feed_mm_min": 450, "tap_feed_mm_min": 700}
+  },
+  "default": {"rough_feed_mm_min": 1500, "finish_feed_mm_min": 1200, "rough_stepdown_mm": 1.5, "finish_stepdown_mm": 0.4, "plunge_feed_mm_min": 500, "drill_feed_mm_min": 200, "tap_feed_mm_min": 350}
+}

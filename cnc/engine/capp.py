@@ -16,7 +16,7 @@ be defended to a customer or tuned by an estimator.
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from ..geometry.features import FeatureSet
 from .shopdata import Machine, Material, ShopData
@@ -72,6 +72,8 @@ class ProcessPlan:
     one_time_min: float          # programming + first article, per batch
     complexity_factor: float
     notes: list[str]
+    backend: str = "analytic"    # which estimator produced the cutting times
+    operations: list[dict] = field(default_factory=list)  # per-op toolpath detail
 
     def to_dict(self) -> dict:
         d = asdict(self)

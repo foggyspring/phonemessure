@@ -99,6 +99,15 @@
           </label>
         </div>
 
+        <label>估算精度 Estimator
+          <select id="backend">
+            <option value="auto">自动 Auto · 有网格则刀路仿真</option>
+            <option value="toolpath">刀路仿真 Toolpath · 高精度</option>
+            <option value="analytic">解析快算 Analytic · 快速</option>
+          </select>
+          <span class="hint-price" id="backend-hint"></span>
+        </label>
+
         <div class="checks">
           <label class="chk"><input id="tight" type="checkbox" /> <span>精密公差 Tight</span></label>
           <label class="chk"><input id="fiveaxis" type="checkbox" /> <span>五轴 5-axis</span></label>
@@ -138,6 +147,7 @@
   <section id="result" class="result hidden">
     <div class="result-banner">
       <h2><span class="step-no">2</span> 报价结果 Quote</h2>
+      <span class="badge" id="estimator-badge" hidden></span>
       <span class="badge live" id="result-badge" hidden>实时预览 Live</span>
     </div>
     <div class="result-grid">
@@ -148,6 +158,7 @@
       <div class="card">
         <h3>工艺 / 工时 Process plan</h3>
         <table class="kv" id="plan-table"></table>
+        <div class="ops-detail" id="ops-detail"></div>
       </div>
       <div class="card price-card">
         <h3>单件报价 Unit price</h3>

@@ -353,6 +353,7 @@ function buildParams(save) {
     tight_tolerance: $("tight").checked,
     requires_5axis: $("fiveaxis").checked,
     rush: $("rush").checked,
+    backend: $("backend").value,
     holes: collectHoles(),
     save,
   };
@@ -475,6 +476,7 @@ function renderResult(p, isLive) {
     ? notes.map((n) => { const c = classifyDFM(n); return `<li class="${c.level}"><span class="w-ico">${c.ico}</span><span>${n}</span></li>`; }).join("")
     : `<li class="info"><span class="w-ico">✅</span><span>无明显可加工性风险 No DFM flags</span></li>`;
 
+  renderEstimator(p);
   $("result-badge").hidden = !isLive;
   const resEl = $("result");
   const wasHidden = resEl.classList.contains("hidden");
@@ -587,6 +589,46 @@ function toast(msg, kind = "info", ttl = 3200) {
   setTimeout(() => { el.classList.add("fade-out"); setTimeout(() => el.remove(), 350); }, ttl);
 }
 
+async function loadBackends() {
+  try {
+    const d = await (await fetch("/api/backends")).json();
+    const sel = $("backend"), av = d.available || {};
+    [...sel.options].forEach((o) => {
+      if (o.value === "toolpath" && !av.toolpath) { o.disabled = true; o.textContent += "（未安装）"; }
+    });
+    const tiers = [];
+    if (av.toolpath) tiers.push("刀路仿真");
+    if (av.freecad) tiers.push("FreeCAD CAM");
+    $("backend-hint").textContent = tiers.length
+      ? "可用高精度后端：" + tiers.join(" / ")
+      : "仅解析快算可用（pip install trimesh shapely 开启刀路仿真）";
+  } catch { /* ignore */ }
+}
+
+const BACKEND_LABEL = {
+  toolpath: "刀路仿真 Toolpath", analytic: "解析 Analytic", freecad: "FreeCAD CAM",
+};
+function renderEstimator(p) {
+  const used = p.estimator?.used;
+  const b = $("estimator-badge");
+  if (!used) { b.hidden = true; return; }
+  b.hidden = false;
+  b.textContent = "工时来源：" + (BACKEND_LABEL[used] || used);
+  b.className = "badge " + (used === "analytic" ? "info-badge" : "tp-badge");
+
+  const ops = p.plan?.operations || [];
+  const el = $("ops-detail");
+  if (!ops.length) { el.innerHTML = ""; return; }
+  const fmt = (o) => {
+    if (o.op === "roughing") return `开粗 · Z分层 ${o.levels} 层 · 刀路 ${(o.path_len_mm / 1000).toFixed(2)} m @ ${o.feed_mm_min}mm/min → ${o.minutes}min`;
+    if (o.op === "finishing") return `精加工 · 等高 ${o.levels} 层 · 壁 ${(o.wall_len_mm / 1000).toFixed(2)}m + 光面 ${(o.raster_len_mm / 1000).toFixed(2)}m → ${o.minutes}min`;
+    if (o.op === "drilling") return `钻孔 ${o.holes} 个（螺纹 ${o.threaded}）· 总深 ${o.total_depth_mm}mm → 钻 ${o.drill_minutes} / 攻 ${o.tap_minutes}min`;
+    return JSON.stringify(o);
+  };
+  el.innerHTML = `<div class="ops-title">刀路仿真明细 Toolpath detail</div>` +
+    ops.map((o) => `<div class="ops-row">${fmt(o)}</div>`).join("");
+}
+
 async function loadHealth() {
   try {
     const h = await (await fetch("/api/health")).json();
@@ -628,6 +670,7 @@ function main() {
   loadShop();
   loadHealth();
   loadHistory();
+  loadBackends();
 
   $("add-hole").addEventListener("click", () => addHoleRow());
   $("quote-btn").addEventListener("click", () => requestQuote(true));
@@ -639,7 +682,7 @@ function main() {
   $("admin-modal").addEventListener("click", (e) => { if (e.target.id === "admin-modal") closeAdmin(); });
 
   // Live re-quote on any parameter change (once a first quote exists).
-  ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "rush"].forEach((id) =>
+  ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "rush", "backend"].forEach((id) =>
     $(id).addEventListener("change", scheduleLiveQuote));
   $("material").addEventListener("change", scheduleLiveQuote);
   ["m-l", "m-w", "m-h", "m-v"].forEach((id) =>

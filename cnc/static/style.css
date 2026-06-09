@@ -219,6 +219,17 @@ button.primary.loading::after {
   font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600;
 }
 .badge.live { background: rgba(63,185,80,.16); color: var(--accent2); border: 1px solid rgba(63,185,80,.4); }
+.badge.tp-badge { background: rgba(47,129,247,.16); color: #79b8ff; border: 1px solid rgba(47,129,247,.45); }
+.badge.info-badge { background: var(--panel2); color: var(--muted); border: 1px solid var(--border2); }
+
+/* toolpath operation detail */
+.ops-detail { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 10px; }
+.ops-title { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 6px; }
+.ops-row {
+  font-size: 11.5px; color: var(--text); padding: 5px 9px; margin-bottom: 5px;
+  background: var(--panel2); border-left: 2px solid var(--accent); border-radius: 6px;
+  font-variant-numeric: tabular-nums; line-height: 1.45;
+}
 .result-grid { display: grid; grid-template-columns: 1fr 1fr 1.05fr; gap: 18px; }
 @media (max-width: 920px) { .result-grid { grid-template-columns: 1fr; } }
 table.kv { width: 100%; border-collapse: collapse; font-size: 13px; }

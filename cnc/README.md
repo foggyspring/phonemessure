@@ -39,7 +39,11 @@ python -m pytest cnc/tests -q
 | 几何解析 | `cnc/geometry/mesh.py` | 纯 Python 解析 STL（二进制/ASCII）：包围盒、体积（带符号四面体求和）、表面积、复杂度代理 |
 | 格式分发 | `cnc/geometry/parser.py` | 按扩展名分发；STEP/IGES 懒加载 OpenCASCADE，缺失时抛 `KernelUnavailable`；含手动尺寸兜底 |
 | 特征/DFM | `cnc/geometry/features.py` | 合并几何信号 + 用户声明（孔/螺纹/公差/薄壁/五轴），产出可加工性告警 |
-| 工艺工时 | `cnc/engine/capp.py` | 毛坯=包围盒+余量；去除体积/MRR；开粗→精加工→钻孔→攻丝；装夹/换刀/编程 |
+| 工艺工时（解析） | `cnc/engine/capp.py` | 毛坯=包围盒+余量；去除体积/MRR；开粗→精加工→钻孔→攻丝；装夹/换刀/编程 |
+| 工时估算后端 | `cnc/estimators/` | 可插拔精度分级：`analytic`（V/MRR）/ `toolpath`（刀路仿真）/ `freecad`（真实CAM） |
+| 刀路仿真 | `cnc/estimators/toolpath.py` | trimesh 分层 + shapely 偏置：Z 分层开粗 + 等高精加工，积分真实刀路长度÷进给 |
+| G代码工时 | `cnc/estimators/gcode_time.py` | 解析任意 CAM 的 G 代码，按进给+梯形加速积分真实节拍 |
+| FreeCAD CAM | `cnc/estimators/freecad_cam.py` | 调用 freecadcmd 自动生成刀路并导出 G 代码（可选，最高精度） |
 | 成本利润 | `cnc/engine/costing.py` | 材料费+加工费+表处费+一次性编程，×(1+利润率)；一次性成本按数量摊销→阶梯报价 |
 | 参考数据 | `cnc/engine/shopdata.py` + `cnc/data/*.json` | 材料密度/单价、机床时租、CAPP 常数、利润率（生产环境可换 PostgreSQL）；支持运行时价格覆盖 |
 | 持久化 | `cnc/store.py` | SQLite：报价历史 + 价格覆盖（当日单价/时租维护），仅用标准库 |
@@ -68,6 +72,7 @@ python -m pytest cnc/tests -q
 | `GET /` | Three.js 前端单页 |
 | `GET /api/health` | 存活 + 是否装有 B-rep 内核 |
 | `GET /api/materials` | 材料/表面处理/机床/商务参数（供前端下拉） |
+| `GET /api/backends` | 各工时估算后端的可用性（analytic/toolpath/freecad） |
 | `POST /api/parse` | 上传 CAD 文件 → 几何指标（+可能的预览网格 base64） |
 | `POST /api/quote` | `multipart`：`file`（选填）+ `params`(JSON) → 完整报价 payload（自动入库，返回 `id`） |
 | `POST /api/quote/pdf` | body 传 `/api/quote` 的 payload → 返回 PDF 下载 |
@@ -91,6 +96,32 @@ python -m pytest cnc/tests -q
 
 无文件时用 `manual_dims` 兜底（STEP 无内核时前端自动切到此路径）。传 `"save": false`
 可跳过入库（用于试算）。
+
+---
+
+## 工时估算的三级精度 Estimator backends（复用开源 CAM）
+
+工时不再只靠 V/MRR 标量，而是分级、可插拔，统一返回同一 `ProcessPlan`，所以
+成本/PDF 不变。`/api/quote` 传 `"backend"` 选择，`/api/backends` 查可用性：
+
+| 后端 | 精度 | 依赖 | 做法 |
+|------|------|------|------|
+| `analytic` | ~70%（漏斗粗算） | 无 | 去除体积 ÷ 材料调整后的 MRR（`capp.py`） |
+| `toolpath` | 高 | trimesh + shapely | **复用 CAM 内核**：trimesh 按 Z 分层切片，shapely 同心偏置生成开粗刀路、等高生成精加工壁刀路，刀路长度÷真实进给（`data/cutting.json` 的 feeds/speeds）得节拍 |
+| `freecad` | 最高（真实刀路） | FreeCAD（conda） | 调 `freecadcmd` 让 **FreeCAD Path/CAM 工作台**自动编程、导出 G 代码，再由 `gcode_time` 积分真实节拍 |
+
+`auto` = 有网格(STL/STEP 镶嵌) 且装了 trimesh/shapely 就用 `toolpath`，否则回退
+`analytic`；任何一道工序仿真失败也会单独回退，保证总能出价。
+
+```bash
+pip install trimesh shapely scipy networkx      # 开启 toolpath（高精度）
+conda install -c conda-forge freecad            # 开启 freecad（最高精度）
+```
+
+为什么这样设计：`gcode_time` 是通用件，能吃 FreeCAD / HeeksCNC / LinuxCNC /
+手写的任意 G 代码；`toolpath` 直接复用 shapely 的多边形偏置（=所有 2.5D 挖槽
+CAM 的核心算法）和 trimesh 的网格切片，不重造轮子。每一项仿真都在
+`plan.operations` 里留有可追溯明细（分层数、刀路米数、进给）。
 
 ---
 
@@ -131,4 +162,7 @@ conda install -c conda-forge pythonocc-core
   API 自动拉取当日料价、加入支付网关。
 - **大文件**：当前内联解析并限制 ≤60MB；生产应改为 Celery 异步队列。
 - **特征识别**：现为几何信号 + 人工声明；可进一步做真正的孔/型腔/清角自动识别。
+- **工时精度**：✅ 已接入开源 CAM 思路——`toolpath`（trimesh+shapely 刀路仿真）与
+  `freecad`（真实 G 代码）两级高精度后端；下一步可让 `toolpath` 用 opencamlib
+  的 drop-cutter 做自由曲面精加工、并把 feeds/speeds 表细化到「材料×刀具」。
 - **AI 进阶**：积累报价历史后，用神经网络直接由几何特征预测工时（Xometry 路线）。

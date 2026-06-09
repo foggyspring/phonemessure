@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from . import estimators
 from .engine import ShopData, load
-from .engine import capp as capp_mod
 from .engine import costing as costing_mod
 from .geometry import MeshMetrics, analyze
 from .geometry.features import Hole
@@ -64,6 +64,9 @@ def build_quote(
     metrics: MeshMetrics,
     req: QuoteRequest,
     shop: ShopData | None = None,
+    *,
+    mesh_stl: bytes | None = None,
+    backend: str = "auto",
 ) -> dict:
     shop = shop or load()
 
@@ -90,7 +93,10 @@ def build_quote(
         min_wall_mm=req.min_wall_mm,
     )
 
-    plan = capp_mod.plan(feat, material, shop, machine_key=req.machine)
+    plan, backend_info = estimators.make_plan(
+        feat, material, shop,
+        backend=backend, machine_key=req.machine, mesh_stl=mesh_stl,
+    )
     quote = costing_mod.price(
         plan,
         material,
@@ -141,4 +147,5 @@ def build_quote(
         "plan": plan_d,
         "quote": quote.to_dict(),
         "warnings": feat.warnings,
+        "estimator": backend_info,
     }
