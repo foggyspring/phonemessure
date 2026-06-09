@@ -61,6 +61,32 @@ def _effective_shop() -> tuple[ShopData, dict]:
     return shop, sources
 
 
+def _current_value(kind: str, key: str, field: str, base_shop):
+    """Effective value of a (kind,key,field) before a change, for audit trails.
+
+    Returns the active override if one exists, else the base default, else None
+    (e.g. nested business paths we don't resolve here). Pure read; best-effort.
+    """
+    ov = store.get_overrides().get(kind, {}).get(key, {})
+    if field in ov:
+        return ov[field]
+    try:
+        if kind in ("material", "machine", "finish"):
+            catalog = {"material": base_shop.materials, "machine": base_shop.machines,
+                       "finish": base_shop.finishes}[kind]
+            return getattr(catalog[key], field, None)
+        if kind == "business" and "." not in field:
+            return base_shop.business.get(field)
+        if kind == "capp":
+            return base_shop.capp.get(field)
+        if kind == "cutting":
+            from .estimators.toolpath import _load_cutting
+            return _load_cutting().get("materials", {}).get(key, {}).get(field)
+    except Exception:
+        return None
+    return None
+
+
 def _seed_admin() -> None:
     """Ensure one admin user exists; password from env or an insecure default."""
     try:
@@ -628,12 +654,17 @@ def build_app() -> FastAPI:
                 raise HTTPException(status_code=400, detail=f"field '{field}' not a maintainable cutting param")
         else:
             raise HTTPException(status_code=400, detail="invalid kind")
+        # Capture the value being replaced for an auditable before→after trail.
+        before = _current_value(kind, key, field, shop)
         try:
             store.set_override(kind, key, field, value)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        store.add_audit(_admin.get("u", "?"), "set_price", f"{kind}/{key}/{field}={value}")
-        return {"ok": True, "kind": kind, "key": key, "field": field, "value": value}
+        before_s = f"{before:g}" if isinstance(before, (int, float)) else "默认"
+        store.add_audit(_admin.get("u", "?"), "set_price",
+                        f"{kind}/{key}/{field}: {before_s}→{value:g}")
+        return {"ok": True, "kind": kind, "key": key, "field": field,
+                "value": value, "before": before}
 
     @app.get("/api/admin/overrides")
     def overrides(_admin: dict = Depends(require_admin)) -> dict:

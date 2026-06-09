@@ -134,6 +134,18 @@ def test_admin_actions_are_audited(client):
     assert client.get("/api/admin/audit").status_code == 401   # admin-only
 
 
+def test_audit_records_before_and_after_value(client):
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    r1 = client.put("/api/admin/price", headers=h, json={"kind": "material", "key": "AL6061",
+                                                         "field": "price_cny_per_kg", "value": 99})
+    assert r1.json()["before"] == 35.0          # base default captured
+    client.put("/api/admin/price", headers=h, json={"kind": "material", "key": "AL6061",
+                                                    "field": "price_cny_per_kg", "value": 42})
+    details = [a["detail"] for a in client.get("/api/admin/audit", headers=h).json()["audit"]]
+    assert any("99→42" in d for d in details)    # before→after trail is auditable
+    assert any("35→99" in d for d in details)
+
+
 def test_price_revert_undoes_override(client):
     h = {"Authorization": f"Bearer {_token(client)}"}
     base = client.get("/api/materials").json()["materials"]["AL6061"]["price_cny_per_kg"]
