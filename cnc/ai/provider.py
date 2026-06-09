@@ -100,7 +100,8 @@ class MockProvider(LLMProvider):
         def call(name, a=None):
             calls.append(ToolCall(id=f"c{len(calls)}", name=name, arguments=a or {}))
 
-        wants_quote = any(k in low for k in ["报价", "多少钱", "价格", "quote", "price", "cost", "贵"])
+        wants_explain = any(k in low for k in ["为什么", "为啥", "解释", "怎么算", "explain", "凭什么", "贵在"])
+        wants_quote = any(k in low for k in ["报价", "多少钱", "价格", "quote", "price", "cost"])
         wants_compare = any(k in low for k in ["对比", "比较", "compare"])
         wants_cheaper = any(k in low for k in ["便宜", "更省", "省钱", "cheaper", "save"])
         wants_dfm = any(k in low for k in ["dfm", "可加工", "工艺", "风险", "问题", "manufactur"])
@@ -116,6 +117,8 @@ class MockProvider(LLMProvider):
                 call("analyze_dfm", {})
             if "suggest_cheaper_material" in names:
                 call("suggest_cheaper_material", {})
+        elif wants_explain and "explain_quote" in names:
+            call("explain_quote", {})
         else:
             if wants_quote and "get_quote" in names:
                 call("get_quote", args)

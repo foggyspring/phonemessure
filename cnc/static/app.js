@@ -607,6 +607,7 @@ const AI_TOOL_META = {
   suggest_cheaper_material: { ico: "💡", label: "更省建议" }, analyze_dfm: { ico: "🔍", label: "DFM 分析" },
   list_materials: { ico: "📋", label: "材料列表" }, set_price: { ico: "✏️", label: "改价" },
   record_actual_time: { ico: "🎯", label: "录入实测工时" },
+  explain_quote: { ico: "💬", label: "成本解释" },
 };
 
 function renderAIAction(a) {
@@ -693,6 +694,7 @@ async function aiAnalyze() {
 function initAI() {
   $("ai-fab").addEventListener("click", openAIPanel);
   $("ai-analyze-btn").addEventListener("click", aiAnalyze);
+  $("ask-why-btn").addEventListener("click", () => { $("ai-text").value = "为什么是这个价格？"; openAIPanel(); sendAI(); });
   $("ai-close").addEventListener("click", closeAIPanel);
   $("ai-send").addEventListener("click", sendAI);
   $("ai-text").addEventListener("keydown", (e) => {

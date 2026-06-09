@@ -143,6 +143,22 @@ def _t_analyze_dfm(args: dict, ctx: AgentContext) -> dict:
     return {"summary": s, "data": dfm}
 
 
+def _t_explain_quote(args: dict, ctx: AgentContext) -> dict:
+    if (e := _need_part(ctx)):
+        return e
+    p = _run_quote(ctx, {})
+    r = p["quote"]["requested"]
+    parts = sorted([("材料", r["material_cny"]), ("加工", r["machining_cny"]),
+                    ("表面处理", r["finish_variable_cny"]), ("摊销", r["amortized_one_time_cny"])],
+                   key=lambda x: -x[1])
+    top = parts[0]
+    s = (f"单价 {_fmt(r['unit_price_cny'])}：主要成本是{top[0]}（{_fmt(top[1])}/件）。"
+         f"构成 = 材料 {_fmt(r['material_cny'])} + 加工 {_fmt(r['machining_cny'])} + "
+         f"表处 {_fmt(r['finish_variable_cny'])} + 摊销 {_fmt(r['amortized_one_time_cny'])}，"
+         f"利润率 {r['margin']*100:.0f}%。提高数量可摊薄一次性费用。")
+    return {"summary": s, "data": parts}
+
+
 def _t_list_materials(args: dict, ctx: AgentContext) -> dict:
     mats = [{"key": k, "label": m.label, "category": m.category,
              "price_cny_per_kg": m.price_cny_per_kg} for k, m in ctx.shop.materials.items()]
@@ -199,6 +215,8 @@ def register_builtin_tools() -> None:
                   {"type": "object", "properties": {}}, _t_suggest_cheaper))
     register(Tool("analyze_dfm", "对当前零件做可加工性(DFM)分析，列出风险与建议。",
                   {"type": "object", "properties": {}}, _t_analyze_dfm))
+    register(Tool("explain_quote", "用自然语言解释当前报价的成本构成与主要成本驱动。",
+                  {"type": "object", "properties": {}}, _t_explain_quote))
     register(Tool("list_materials", "列出可选材料及当日单价。",
                   {"type": "object", "properties": {}}, _t_list_materials))
     register(Tool("set_price", "修改某材料/机床的单价或时租（需管理员审批后执行）。",
