@@ -4,15 +4,42 @@ import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
 // ───────────────────────── state ─────────────────────────
 const state = {
-  file: null,          // File object the user uploaded
-  fileBytes: null,     // ArrayBuffer of that file
-  geometry: null,      // parsed geometry metrics from /api/parse
-  shop: null,          // /api/materials response
-  lastPayload: null,   // last /api/quote result (for the PDF button)
-  mesh: null,          // current THREE mesh in the scene
+  file: null,
+  fileBytes: null,
+  geometry: null,
+  shop: null,
+  lastPayload: null,
+  mesh: null,
+  bbox: null,
+  hasQuoted: false,
+  lastPrice: 0,
 };
 
 const $ = (id) => document.getElementById(id);
+
+// Material → render look (color + metalness/roughness) for a believable preview.
+const MAT_LOOK = {
+  AL: { color: 0xc7ced6, metal: 0.7, rough: 0.35 },
+  SUS: { color: 0x9aa3ad, metal: 0.85, rough: 0.3 },
+  BRASS: { color: 0xd9b25b, metal: 0.9, rough: 0.3 },
+  COPPER: { color: 0xc9763f, metal: 0.9, rough: 0.32 },
+  TITANIUM: { color: 0x8f9499, metal: 0.8, rough: 0.4 },
+  POM: { color: 0xe9edf1, metal: 0.0, rough: 0.75 },
+  ABS: { color: 0x2c2f33, metal: 0.0, rough: 0.85 },
+  PA: { color: 0xe6e2d3, metal: 0.0, rough: 0.8 },
+};
+function lookForMaterial(key) {
+  if (!key) return { color: 0xb6c2cf, metal: 0.65, rough: 0.4 };
+  if (key.startsWith("AL")) return MAT_LOOK.AL;
+  if (key.startsWith("SUS")) return MAT_LOOK.SUS;
+  if (key.startsWith("BRASS")) return MAT_LOOK.BRASS;
+  if (key.startsWith("COPPER")) return { color: 0xc9763f, metal: 0.9, rough: 0.32 };
+  if (key.startsWith("TITAN")) return MAT_LOOK.TITANIUM;
+  if (key === "POM") return MAT_LOOK.POM;
+  if (key === "ABS") return MAT_LOOK.ABS;
+  if (key.startsWith("PA")) return MAT_LOOK.PA;
+  return { color: 0xb6c2cf, metal: 0.65, rough: 0.4 };
+}
 
 // ───────────────────────── 3D viewer ─────────────────────────
 let scene, camera, renderer, controls;
@@ -20,29 +47,33 @@ let scene, camera, renderer, controls;
 function initViewer() {
   const host = $("viewer");
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0d1117);
+  scene.background = new THREE.Color(0x0c1015);
 
-  camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100000);
+  camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200000);
   camera.position.set(120, 90, 160);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   host.appendChild(renderer.domElement);
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
+  controls.autoRotateSpeed = 1.6;
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x202a36, 1.05));
-  const key = new THREE.DirectionalLight(0xffffff, 1.1);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x1a222c, 1.0));
+  const key = new THREE.DirectionalLight(0xffffff, 1.15);
   key.position.set(1, 1.4, 1);
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0x88aaff, 0.4);
-  fill.position.set(-1, -0.5, -1);
+  const fill = new THREE.DirectionalLight(0x88aaff, 0.45);
+  fill.position.set(-1, -0.4, -1);
   scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.5);
+  rim.position.set(0, 1, -1.5);
+  scene.add(rim);
 
-  const grid = new THREE.GridHelper(400, 40, 0x30363d, 0x21262d);
-  grid.position.y = -0.01;
+  const grid = new THREE.GridHelper(400, 40, 0x2f3a45, 0x1c242c);
+  grid.name = "grid";
   scene.add(grid);
 
   resize();
@@ -53,7 +84,7 @@ function initViewer() {
 function resize() {
   const host = $("viewer");
   const w = host.clientWidth || 600;
-  const h = host.clientHeight || 420;
+  const h = host.clientHeight || 460;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -65,104 +96,135 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-function clearMesh() {
-  if (state.mesh) {
-    scene.remove(state.mesh);
-    state.mesh.geometry?.dispose?.();
-    state.mesh.material?.dispose?.();
-    state.mesh = null;
-  }
+function disposeObj(o) {
+  if (!o) return;
+  scene.remove(o);
+  o.traverse?.((c) => { c.geometry?.dispose?.(); c.material?.dispose?.(); });
+  o.geometry?.dispose?.();
+  o.material?.dispose?.();
 }
 
-function frameObject(obj) {
-  const box = new THREE.Box3().setFromObject(obj);
-  const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  obj.position.sub(center); // recenter at origin
+function makeLabel(text) {
+  const cv = document.createElement("canvas");
+  cv.width = 256; cv.height = 64;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "rgba(12,16,21,0.85)";
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.strokeStyle = "#2f81f7"; ctx.lineWidth = 3; ctx.strokeRect(2, 2, cv.width - 4, cv.height - 4);
+  ctx.fillStyle = "#e6edf3"; ctx.font = "bold 30px sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, cv.width / 2, cv.height / 2);
+  const tex = new THREE.CanvasTexture(cv);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  spr.scale.set(0.18, 0.045, 1);
+  return spr;
+}
 
-  const maxDim = Math.max(size.x, size.y, size.z) || 50;
+function buildBBox(dims) {
+  const [x, y, z] = dims;
+  const g = new THREE.Group();
+  const box = new THREE.BoxGeometry(x, y, z);
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(box),
+    new THREE.LineBasicMaterial({ color: 0x2f81f7, transparent: true, opacity: 0.7 })
+  );
+  g.add(edges);
+  box.dispose();
+  // Dimension labels scaled to the model.
+  const s = Math.max(x, y, z);
+  const lbls = [
+    [`L ${x.toFixed(1)}`, [0, -y / 2 - s * 0.06, z / 2]],
+    [`W ${y.toFixed(1)}`, [x / 2, -y / 2 - s * 0.06, 0]],
+    [`H ${z.toFixed(1)}`, [x / 2 + s * 0.06, 0, z / 2]],
+  ];
+  for (const [t, p] of lbls) {
+    const sp = makeLabel(t);
+    sp.scale.set(s * 0.42, s * 0.105, 1);
+    sp.position.set(p[0], p[1], p[2]);
+    g.add(sp);
+  }
+  return g;
+}
+
+function frameDims(dims) {
+  const maxDim = Math.max(...dims) || 50;
   const dist = maxDim * 2.4;
-  camera.position.set(dist * 0.7, dist * 0.55, dist);
-  camera.near = maxDim / 100;
-  camera.far = maxDim * 100;
+  camera.position.set(dist * 0.75, dist * 0.55, dist);
+  camera.near = maxDim / 200;
+  camera.far = maxDim * 200;
   camera.updateProjectionMatrix();
   controls.target.set(0, 0, 0);
   controls.update();
+  const grid = scene.getObjectByName("grid");
+  if (grid) { grid.position.y = -dims[1] / 2 - maxDim * 0.02; grid.scale.setScalar(Math.max(1, maxDim / 200)); }
+}
 
-  const grid = scene.children.find((c) => c.type === "GridHelper");
-  if (grid) {
-    grid.position.y = -size.y / 2 - 1;
-    grid.scale.setScalar(Math.max(1, maxDim / 200));
+function renderGeometry(dims, meshGeometry, materialKey) {
+  disposeObj(state.mesh); state.mesh = null;
+  disposeObj(state.bbox); state.bbox = null;
+
+  if (meshGeometry) {
+    meshGeometry.center();
+    meshGeometry.computeVertexNormals();
+    const look = lookForMaterial(materialKey);
+    const mesh = new THREE.Mesh(
+      meshGeometry,
+      new THREE.MeshStandardMaterial({ color: look.color, metalness: look.metal, roughness: look.rough })
+    );
+    mesh.add(new THREE.LineSegments(
+      new THREE.EdgesGeometry(meshGeometry, 35),
+      new THREE.LineBasicMaterial({ color: 0x0d1117, transparent: true, opacity: 0.25 })
+    ));
+    scene.add(mesh);
+    state.mesh = mesh;
   }
+
+  state.bbox = buildBBox(dims);
+  state.bbox.visible = $("toggle-bbox").classList.contains("active");
+  scene.add(state.bbox);
+
+  frameDims(dims);
+  $("drop").classList.add("loaded");
+  $("viewer-toolbar").hidden = false;
 }
 
-function showMesh(geometry) {
-  clearMesh();
-  geometry.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xb6c2cf, metalness: 0.65, roughness: 0.35, flatShading: false,
-  });
-  const mesh = new THREE.Mesh(geometry, mat);
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geometry, 35),
-    new THREE.LineBasicMaterial({ color: 0x1f6feb, transparent: true, opacity: 0.25 })
-  );
-  mesh.add(edges);
-  scene.add(mesh);
-  state.mesh = mesh;
-  frameObject(mesh);
-  $("drop").classList.add("loaded");
-}
-
-function showBBox(dims) {
-  // STEP with no client geometry: show the bounding box as a wireframe.
-  clearMesh();
-  const [x, y, z] = dims;
-  const geo = new THREE.BoxGeometry(x, y, z);
-  const mesh = new THREE.Mesh(
-    geo,
-    new THREE.MeshStandardMaterial({ color: 0x1f6feb, transparent: true, opacity: 0.12 })
-  );
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geo),
-    new THREE.LineBasicMaterial({ color: 0x1f6feb })
-  );
-  mesh.add(edges);
-  scene.add(mesh);
-  state.mesh = mesh;
-  frameObject(mesh);
-  $("drop").classList.add("loaded");
+function recolorMesh(materialKey) {
+  if (!state.mesh) return;
+  const look = lookForMaterial(materialKey);
+  state.mesh.material.color.setHex(look.color);
+  state.mesh.material.metalness = look.metal;
+  state.mesh.material.roughness = look.rough;
 }
 
 // ───────────────────────── upload flow ─────────────────────────
 function b64ToArrayBuffer(b64) {
-  const bin = atob(b64);
-  const len = bin.length;
-  const bytes = new Uint8Array(len);
+  const bin = atob(b64), len = bin.length, bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
   return bytes.buffer;
 }
 
 async function handleFile(file) {
   if (!file) return;
-  clearError();
   state.file = file;
   state.fileBytes = await file.arrayBuffer();
-  $("viewer-meta").innerHTML = `解析中 parsing <b>${file.name}</b> …`;
+  $("viewer-spinner").classList.remove("hidden");
+  $("viewer-meta").innerHTML = `解析中 <b>${file.name}</b> …`;
 
-  const fd = new FormData();
-  fd.append("file", file);
   let res;
   try {
+    const fd = new FormData();
+    fd.append("file", file);
     res = await fetch("/api/parse", { method: "POST", body: fd });
   } catch (e) {
-    showError("网络错误 network error: " + e.message);
+    $("viewer-spinner").classList.add("hidden");
+    toast("网络错误：" + e.message, "err");
     return;
   }
+  $("viewer-spinner").classList.add("hidden");
+
   if (!res.ok) {
     const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
-    // STEP without kernel etc. -> let the user fall back to manual dims.
-    showError(detail);
+    toast(detail, "err", 6000);
     $("manual-box").classList.remove("hidden");
     state.geometry = null;
     refreshQuoteEnabled();
@@ -172,32 +234,30 @@ async function handleFile(file) {
   state.geometry = data.geometry;
   $("manual-box").classList.add("hidden");
 
-  // Render: native STL locally; tessellated STEP from server; else bbox.
   const ext = file.name.toLowerCase().split(".").pop();
   const loader = new STLLoader();
+  let geom = null;
   try {
-    if (ext === "stl") {
-      showMesh(loader.parse(state.fileBytes));
-    } else if (data.preview_stl_b64) {
-      showMesh(loader.parse(b64ToArrayBuffer(data.preview_stl_b64)));
-    } else {
-      showBBox(data.geometry.dims_mm);
-    }
-  } catch (e) {
-    showBBox(data.geometry.dims_mm);
-  }
+    if (ext === "stl") geom = loader.parse(state.fileBytes);
+    else if (data.preview_stl_b64) geom = loader.parse(b64ToArrayBuffer(data.preview_stl_b64));
+  } catch { geom = null; }
+  renderGeometry(data.geometry.dims_mm, geom, $("material").value);
 
   const g = data.geometry;
   $("viewer-meta").innerHTML =
-    `<b>${file.name}</b> · ${data.source_format.toUpperCase()} · ` +
-    `外形 ${g.dims_mm.map((v) => v.toFixed(1)).join(" × ")} mm · ` +
-    `体积 ${g.volume_cm3} cm³ · 表面积 ${g.area_cm2} cm² · ` +
-    `复杂度 ${(g.complexity * 100).toFixed(0)}%`;
+    `<b>${file.name}</b> · ${data.source_format.toUpperCase()}` +
+    `<br><span class="chip">外形 ${g.dims_mm.map((v) => v.toFixed(1)).join(" × ")} mm</span>` +
+    `<span class="chip">体积 ${g.volume_cm3} cm³</span>` +
+    `<span class="chip">表面积 ${g.area_cm2} cm²</span>` +
+    `<span class="chip">复杂度 ${(g.complexity * 100).toFixed(0)}%</span>`;
   refreshQuoteEnabled();
+  toast("解析完成，可以生成报价了", "ok");
+  if (state.hasQuoted) scheduleLiveQuote();
 }
 
 // ───────────────────────── materials / form ─────────────────────────
 async function loadShop() {
+  const prevMat = $("material").value, prevFin = $("finish").value, prevMach = $("machine").value;
   const res = await fetch("/api/materials");
   state.shop = await res.json();
 
@@ -205,52 +265,64 @@ async function loadShop() {
   matSel.innerHTML = "";
   for (const [k, m] of Object.entries(state.shop.materials)) {
     const o = document.createElement("option");
-    o.value = k;
-    o.textContent = m.label;
+    o.value = k; o.textContent = m.label;
     matSel.appendChild(o);
   }
+  if (prevMat && state.shop.materials[prevMat]) matSel.value = prevMat;
+
   const machSel = $("machine");
+  machSel.innerHTML = '<option value="">自动 Auto</option>';
   for (const [k, mc] of Object.entries(state.shop.machines)) {
     const o = document.createElement("option");
-    o.value = k;
-    o.textContent = `${mc.label} (¥${mc.rate_cny_per_hour}/h)`;
+    o.value = k; o.textContent = `${mc.label} (¥${mc.rate_cny_per_hour}/h)`;
     machSel.appendChild(o);
   }
-  matSel.addEventListener("change", refreshFinishes);
-  refreshFinishes();
+  if (prevMach) machSel.value = prevMach;
+
+  if (!matSel._wired) {
+    matSel.addEventListener("change", () => { refreshFinishes(); updateMatPrice(); recolorMesh(matSel.value); });
+    matSel._wired = true;
+  }
+  refreshFinishes(prevFin);
+  updateMatPrice();
 }
 
-function refreshFinishes() {
+function refreshFinishes(prefer) {
   const mat = state.shop.materials[$("material").value];
   const finSel = $("finish");
-  const prev = finSel.value;
+  const prev = prefer || finSel.value;
   finSel.innerHTML = "";
   for (const key of mat.finish_ok) {
     const o = document.createElement("option");
-    o.value = key;
-    o.textContent = state.shop.finishes[key]?.label || key;
+    o.value = key; o.textContent = state.shop.finishes[key]?.label || key;
     finSel.appendChild(o);
   }
   if ([...finSel.options].some((o) => o.value === prev)) finSel.value = prev;
+}
+
+function updateMatPrice() {
+  const m = state.shop?.materials[$("material").value];
+  $("mat-price").textContent = m ? `当前料价 ¥${m.price_cny_per_kg}/kg · 密度 ${m.density_g_cm3} g/cm³` : "";
 }
 
 // ───────────────────────── holes table ─────────────────────────
 function addHoleRow(d = 6, depth = 10, count = 1, threaded = false) {
   const tb = $("holes-table").querySelector("tbody");
   const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td><input type="number" class="h-d" min="0" step="0.1" value="${d}"></td>
-    <td><input type="number" class="h-depth" min="0" step="0.1" value="${depth}"></td>
-    <td><input type="number" class="h-count" min="1" step="1" value="${count}"></td>
-    <td style="text-align:center"><input type="checkbox" class="h-thread" ${threaded ? "checked" : ""}></td>
-    <td><button class="row-del">×</button></td>`;
-  tr.querySelector(".row-del").addEventListener("click", () => tr.remove());
+  tr.innerHTML =
+    `<td><input type="number" class="h-d" min="0" step="0.1" value="${d}"></td>` +
+    `<td><input type="number" class="h-depth" min="0" step="0.1" value="${depth}"></td>` +
+    `<td><input type="number" class="h-count" min="1" step="1" value="${count}"></td>` +
+    `<td style="text-align:center"><input type="checkbox" class="h-thread" ${threaded ? "checked" : ""}></td>` +
+    `<td><button class="row-del" title="删除">✕</button></td>`;
+  tr.querySelector(".row-del").addEventListener("click", () => { tr.remove(); scheduleLiveQuote(); });
+  tr.querySelectorAll("input").forEach((i) => i.addEventListener("input", scheduleLiveQuote));
   tb.appendChild(tr);
+  scheduleLiveQuote();
 }
 
 function collectHoles() {
-  const rows = [...$("holes-table").querySelectorAll("tbody tr")];
-  return rows.map((tr) => ({
+  return [...$("holes-table").querySelectorAll("tbody tr")].map((tr) => ({
     diameter_mm: parseFloat(tr.querySelector(".h-d").value) || 0,
     depth_mm: parseFloat(tr.querySelector(".h-depth").value) || 0,
     count: parseInt(tr.querySelector(".h-count").value) || 1,
@@ -260,22 +332,18 @@ function collectHoles() {
 
 // ───────────────────────── quote ─────────────────────────
 function manualDims() {
-  const l = parseFloat($("m-l").value);
-  const w = parseFloat($("m-w").value);
-  const h = parseFloat($("m-h").value);
-  const v = parseFloat($("m-v").value);
-  if (l > 0 && w > 0 && h > 0) {
+  const l = parseFloat($("m-l").value), w = parseFloat($("m-w").value),
+        h = parseFloat($("m-h").value), v = parseFloat($("m-v").value);
+  if (l > 0 && w > 0 && h > 0)
     return { length_mm: l, width_mm: w, height_mm: h, volume_mm3: v > 0 ? v : null };
-  }
   return null;
 }
 
 function refreshQuoteEnabled() {
-  const ok = state.geometry !== null || manualDims() !== null;
-  $("quote-btn").disabled = !ok;
+  $("quote-btn").disabled = !(state.geometry !== null || manualDims() !== null);
 }
 
-function buildParams() {
+function buildParams(save) {
   const p = {
     part_name: state.file ? state.file.name.replace(/\.[^.]+$/, "") : "part",
     material: $("material").value,
@@ -286,50 +354,75 @@ function buildParams() {
     requires_5axis: $("fiveaxis").checked,
     rush: $("rush").checked,
     holes: collectHoles(),
+    save,
   };
   const mw = parseFloat($("minwall").value);
   if (mw > 0) p.min_wall_mm = mw;
-  if (!state.file) {
-    const md = manualDims();
-    if (md) p.manual_dims = md;
-  }
+  if (!state.file) { const md = manualDims(); if (md) p.manual_dims = md; }
   return p;
 }
 
-async function getQuote() {
-  clearError();
+let liveTimer = null;
+function scheduleLiveQuote() {
+  if (!state.hasQuoted) return;
+  if (!(state.geometry || manualDims())) return;
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(() => requestQuote(false), 420);
+}
+
+async function requestQuote(save) {
+  if (!(state.geometry || manualDims())) return;
   const btn = $("quote-btn");
-  btn.disabled = true;
-  btn.textContent = "计算中 …";
+  if (save) btn.classList.add("loading");
   try {
     const fd = new FormData();
-    fd.append("params", JSON.stringify(buildParams()));
+    fd.append("params", JSON.stringify(buildParams(save)));
     if (state.file) fd.append("file", state.file);
     const res = await fetch("/api/quote", { method: "POST", body: fd });
     if (!res.ok) {
       const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
-      showError("报价失败: " + detail);
+      toast("报价失败：" + detail, "err", 6000);
       return;
     }
     state.lastPayload = await res.json();
-    renderResult(state.lastPayload);
-    loadHistory();
+    state.hasQuoted = true;
+    renderResult(state.lastPayload, !save);
+    $("live-hint").hidden = false;
+    if (save) { loadHistory(); toast("报价已生成并存入历史 · " + (state.lastPayload.id || ""), "ok"); }
   } catch (e) {
-    showError("网络错误: " + e.message);
+    toast("网络错误：" + e.message, "err");
   } finally {
-    btn.disabled = false;
-    btn.textContent = "生成报价 Get Quote";
+    btn.classList.remove("loading");
     refreshQuoteEnabled();
   }
 }
 
 // ───────────────────────── render result ─────────────────────────
-function kv(rows) {
-  return rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
-}
-const money = (v, cur = "CNY") => (cur === "CNY" ? "¥" : cur + " ") + Number(v).toFixed(2);
+const fmtNum = (v) => Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (v, cur = "CNY") => (cur === "CNY" ? "¥" : cur + " ") + fmtNum(v);
+function kv(rows) { return rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join(""); }
 
-function renderResult(p) {
+function countUp(el, from, to, cur) {
+  const t0 = performance.now(), dur = 480;
+  function step(t) {
+    const k = Math.min(1, (t - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = money(from + (to - from) * e, cur);
+    if (k < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+const DFM_RULES = [
+  { re: /风险|变形|断丝|过小|振动|啄钻|peck/i, level: "warn", ico: "⚠️" },
+  { re: /无法|不可|超限|必须/i, level: "danger", ico: "⛔" },
+];
+function classifyDFM(text) {
+  for (const r of DFM_RULES) if (r.re.test(text)) return r;
+  return { level: "info", ico: "ℹ️" };
+}
+
+function renderResult(p, isLive) {
   const cur = p.quote.currency;
   const g = p.geometry, pl = p.plan, q = p.quote, r = q.requested;
 
@@ -347,51 +440,52 @@ function renderResult(p) {
     ["毛坯 Stock", [pl.stock.length_mm, pl.stock.width_mm, pl.stock.height_mm].map((v) => v.toFixed(1)).join(" × ") + " mm"],
     ["去除体积 Removed", pl.removed_volume_cm3 + " cm³"],
     ["有效 MRR", pl.effective_mrr_cm3_min + " cm³/min"],
-    ["装夹 Setups", pl.setups],
-    ["刀具 Tools", pl.tools],
+    ["装夹 / 刀具", `${pl.setups} setups · ${pl.tools} tools`],
     ["开粗 Roughing", pl.times.roughing_min.toFixed(1) + " min"],
     ["精加工 Finishing", pl.times.finishing_min.toFixed(1) + " min"],
     ["钻孔 Drilling", pl.times.drilling_min.toFixed(1) + " min"],
     ["攻丝 Tapping", pl.times.tapping_min.toFixed(1) + " min"],
     ["单件机时 Cycle", "<b>" + pl.times.per_part_min.toFixed(1) + " min</b>"],
-    ["一次性编程 One-time", q.one_time_cny.toFixed(0) + " 分钟摊销"],
   ]);
 
-  $("bignum").textContent = money(r.unit_price_cny, cur);
+  countUp($("bignum"), state.lastPrice || 0, r.unit_price_cny, cur);
+  state.lastPrice = r.unit_price_cny;
+  $("bignum-sub").textContent = `× ${r.quantity} 件 = ${money(r.line_total_cny, cur)} · 交期 ${q.lead_days} 天${q.rush ? " (加急)" : ""}`;
   $("cost-table").innerHTML = kv([
     ["材料费 Material", money(r.material_cny, cur)],
     ["加工费 Machining", money(r.machining_cny, cur)],
     ["表面处理 Finishing", money(r.finish_variable_cny, cur)],
     ["编程摊销 Setup/ea", money(r.amortized_one_time_cny, cur)],
     ["单件成本 Unit cost", money(r.unit_cost_cny, cur)],
-    [`利润率 Margin ${(r.margin * 100).toFixed(0)}%`, ""],
-    ["数量 Qty", r.quantity],
-    ["<b>批量总价 Total</b>", "<b>" + money(r.line_total_cny, cur) + "</b>"],
+    [`利润率 Margin`, (r.margin * 100).toFixed(0) + " %"],
   ]);
 
+  const base = q.tiers.length ? q.tiers[0].unit_price_cny : r.unit_price_cny;
   let rows = `<tr><th>数量 Qty</th><th>单价 Unit</th><th>总价 Total</th></tr>`;
   for (const t of q.tiers) {
     const active = t.quantity === r.quantity ? ' class="active"' : "";
-    rows += `<tr${active}><td>${t.quantity}</td><td>${money(t.unit_price_cny, cur)}</td><td>${money(t.line_total_cny, cur)}</td></tr>`;
+    const save = base > 0 && t.unit_price_cny < base
+      ? `<span class="save-pct">-${(100 * (1 - t.unit_price_cny / base)).toFixed(0)}%</span>` : "";
+    rows += `<tr${active}><td>${t.quantity}</td><td>${money(t.unit_price_cny, cur)}${save}</td><td>${money(t.line_total_cny, cur)}</td></tr>`;
   }
   $("tier-table").innerHTML = rows;
 
   const notes = [...(p.warnings || []), ...(q.notes || []), ...(pl.notes || [])];
-  $("warn-list").innerHTML = notes.map((n) => `<li>${n}</li>`).join("") || "<li>无 None</li>";
-  if (q.lead_days) {
-    $("warn-list").innerHTML += `<li>交期 Lead time: <b>${q.lead_days}</b> 天${q.rush ? " (加急)" : ""}</li>`;
-  }
+  $("warn-list").innerHTML = notes.length
+    ? notes.map((n) => { const c = classifyDFM(n); return `<li class="${c.level}"><span class="w-ico">${c.ico}</span><span>${n}</span></li>`; }).join("")
+    : `<li class="info"><span class="w-ico">✅</span><span>无明显可加工性风险 No DFM flags</span></li>`;
 
-  $("result").classList.remove("hidden");
-  $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("result-badge").hidden = !isLive;
+  const resEl = $("result");
+  const wasHidden = resEl.classList.contains("hidden");
+  resEl.classList.remove("hidden");
+  if (wasHidden) { resEl.classList.add("reveal"); resEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
 }
 
 // ───────────────────────── history ─────────────────────────
 async function loadHistory() {
   let rows;
-  try {
-    rows = (await (await fetch("/api/quotes?limit=12")).json()).quotes || [];
-  } catch { return; }
+  try { rows = (await (await fetch("/api/quotes?limit=12")).json()).quotes || []; } catch { return; }
   const tb = $("hist-table").querySelector("tbody");
   $("hist-empty").classList.toggle("hidden", rows.length > 0);
   tb.innerHTML = "";
@@ -400,13 +494,10 @@ async function loadHistory() {
     const when = (r.created_at || "").replace("T", " ").slice(5, 16);
     tr.innerHTML =
       `<td>${r.part_name || "part"}<div class="h-id">${r.id}</div></td>` +
-      `<td>${r.material}×${r.quantity}<br><span class="muted tiny">${when}</span></td>` +
+      `<td>${r.material} × ${r.quantity}<br><span class="muted tiny">${when}</span></td>` +
       `<td class="h-price">${money(r.unit_price, r.currency || "CNY")}</td>` +
-      `<td class="h-pdf"><a href="/api/quotes/${r.id}/pdf" target="_blank">PDF</a></td>`;
-    tr.addEventListener("click", (e) => {
-      if (e.target.tagName === "A") return; // let the PDF link work
-      reopenQuote(r.id);
-    });
+      `<td class="h-pdf"><a href="/api/quotes/${r.id}/pdf" target="_blank" rel="noopener">PDF</a></td>`;
+    tr.addEventListener("click", (e) => { if (e.target.tagName !== "A") reopenQuote(r.id); });
     tb.appendChild(tr);
   }
 }
@@ -416,56 +507,111 @@ async function reopenQuote(id) {
     const res = await fetch(`/api/quotes/${id}`);
     if (!res.ok) return;
     state.lastPayload = await res.json();
-    renderResult(state.lastPayload);
+    state.lastPrice = 0;
+    renderResult(state.lastPayload, false);
+    toast("已载入历史报价 " + id, "info");
   } catch { /* ignore */ }
 }
 
 async function downloadPdf() {
   if (!state.lastPayload) return;
   const btn = $("pdf-btn");
-  btn.disabled = true;
-  btn.textContent = "生成中 …";
+  btn.classList.add("loading");
   try {
     const res = await fetch("/api/quote/pdf", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(state.lastPayload),
     });
-    if (!res.ok) { showError("PDF 失败: " + res.statusText); return; }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    if (!res.ok) { toast("PDF 生成失败", "err"); return; }
+    const blob = await res.blob(), url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = (state.lastPayload.input.part_name || "quote") + "_quote.pdf";
     a.click();
     URL.revokeObjectURL(url);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "下载 PDF 报价单";
-  }
+    toast("PDF 已下载", "ok");
+  } finally { btn.classList.remove("loading"); }
 }
 
-// ───────────────────────── errors / health ─────────────────────────
-function showError(msg) {
-  const el = $("error");
-  el.textContent = msg;
-  el.classList.remove("hidden");
+// ───────────────────────── admin price modal ─────────────────────────
+function openAdmin() {
+  if (!state.shop) return;
+  const mg = $("admin-materials"); mg.innerHTML = "";
+  for (const [k, m] of Object.entries(state.shop.materials)) {
+    const d = document.createElement("div"); d.className = "admin-row";
+    d.innerHTML = `<label>${m.label}<input type="number" min="0" step="0.5" data-kind="material" data-key="${k}" data-field="price_cny_per_kg" value="${m.price_cny_per_kg}"></label>`;
+    mg.appendChild(d);
+  }
+  const cg = $("admin-machines"); cg.innerHTML = "";
+  for (const [k, mc] of Object.entries(state.shop.machines)) {
+    const d = document.createElement("div"); d.className = "admin-row";
+    d.innerHTML = `<label>${mc.label}<input type="number" min="0" step="5" data-kind="machine" data-key="${k}" data-field="rate_cny_per_hour" value="${mc.rate_cny_per_hour}"></label>`;
+    cg.appendChild(d);
+  }
+  $("admin-modal").classList.remove("hidden");
 }
-function clearError() { $("error").classList.add("hidden"); }
+function closeAdmin() { $("admin-modal").classList.add("hidden"); }
+
+async function saveAdmin() {
+  const inputs = [...$("admin-modal").querySelectorAll("input[data-kind]")];
+  const changed = inputs.filter((i) => {
+    const orig = i.getAttribute("value");
+    return parseFloat(i.value) !== parseFloat(orig);
+  });
+  if (!changed.length) { toast("没有改动", "info"); closeAdmin(); return; }
+  $("admin-save").classList.add("loading");
+  try {
+    for (const i of changed) {
+      await fetch("/api/admin/price", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: i.dataset.kind, key: i.dataset.key, field: i.dataset.field, value: parseFloat(i.value) }),
+      });
+    }
+    await loadShop();
+    closeAdmin();
+    toast(`已更新 ${changed.length} 项价格`, "ok");
+    if (state.hasQuoted) requestQuote(false);
+  } catch (e) {
+    toast("保存失败：" + e.message, "err");
+  } finally { $("admin-save").classList.remove("loading"); }
+}
+
+// ───────────────────────── toast / errors / health ─────────────────────────
+function toast(msg, kind = "info", ttl = 3200) {
+  const wrap = $("toast-wrap");
+  const el = document.createElement("div");
+  el.className = `toast ${kind}`;
+  const ico = kind === "ok" ? "✅" : kind === "err" ? "⛔" : "ℹ️";
+  el.innerHTML = `<span>${ico}</span><span>${msg}</span>`;
+  wrap.appendChild(el);
+  setTimeout(() => { el.classList.add("fade-out"); setTimeout(() => el.remove(), 350); }, ttl);
+}
 
 async function loadHealth() {
   try {
     const h = await (await fetch("/api/health")).json();
     $("health").innerHTML = h.brep_kernel
-      ? '<span class="ok">● OCCT 内核就绪</span> STEP/IGES 可解析'
-      : '<span class="no">● 无 OCCT 内核</span> 仅 STL 自动解析，STEP 请手动输入尺寸';
-  } catch { /* ignore */ }
+      ? '<span class="dot ok"></span> OCCT 就绪 · STEP/IGES 可解析'
+      : '<span class="dot no"></span> 仅 STL 自动解析 · STEP 请手动尺寸';
+  } catch { $("health").innerHTML = '<span class="dot no"></span> 离线'; }
 }
 
-// ───────────────────────── wire-up ─────────────────────────
+// ───────────────────────── viewer toolbar ─────────────────────────
+function wireToolbar() {
+  $("toggle-bbox").addEventListener("click", (e) => {
+    e.currentTarget.classList.toggle("active");
+    if (state.bbox) state.bbox.visible = e.currentTarget.classList.contains("active");
+  });
+  $("toggle-spin").addEventListener("click", (e) => {
+    e.currentTarget.classList.toggle("active");
+    controls.autoRotate = e.currentTarget.classList.contains("active");
+  });
+  $("reset-view").addEventListener("click", () => { if (state.geometry) frameDims(state.geometry.dims_mm); });
+}
+
+// ───────────────────────── uploads ─────────────────────────
 function wireUploads() {
-  const drop = $("drop");
-  const input = $("file");
+  const drop = $("drop"), input = $("file");
   $("drop-hint").addEventListener("click", () => input.click());
   input.addEventListener("change", (e) => handleFile(e.target.files[0]));
   ["dragenter", "dragover"].forEach((ev) =>
@@ -478,14 +624,26 @@ function wireUploads() {
 function main() {
   initViewer();
   wireUploads();
+  wireToolbar();
   loadShop();
   loadHealth();
   loadHistory();
+
   $("add-hole").addEventListener("click", () => addHoleRow());
-  $("quote-btn").addEventListener("click", getQuote);
+  $("quote-btn").addEventListener("click", () => requestQuote(true));
   $("pdf-btn").addEventListener("click", downloadPdf);
   $("hist-refresh").addEventListener("click", loadHistory);
-  ["m-l", "m-w", "m-h"].forEach((id) => $(id).addEventListener("input", refreshQuoteEnabled));
+  $("admin-btn").addEventListener("click", openAdmin);
+  $("admin-close").addEventListener("click", closeAdmin);
+  $("admin-save").addEventListener("click", saveAdmin);
+  $("admin-modal").addEventListener("click", (e) => { if (e.target.id === "admin-modal") closeAdmin(); });
+
+  // Live re-quote on any parameter change (once a first quote exists).
+  ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "rush"].forEach((id) =>
+    $(id).addEventListener("change", scheduleLiveQuote));
+  $("material").addEventListener("change", scheduleLiveQuote);
+  ["m-l", "m-w", "m-h", "m-v"].forEach((id) =>
+    $(id).addEventListener("input", () => { refreshQuoteEnabled(); scheduleLiveQuote(); }));
 }
 
 main();

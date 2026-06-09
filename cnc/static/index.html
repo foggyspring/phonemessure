@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CNC 自动报价 · Instant CNC Quote</title>
+  <link rel="preconnect" href="https://unpkg.com" />
   <link rel="stylesheet" href="/static/style.css" />
   <script type="importmap">
     {
@@ -23,7 +24,10 @@
         <p>上传 3D 图纸 → 几何解析 → 工艺工时 → 成本利润 → 报价单</p>
       </div>
     </div>
-    <div class="health" id="health"></div>
+    <div class="top-actions">
+      <div class="health" id="health"><span class="dot pending"></span> 连接中…</div>
+      <button id="admin-btn" class="ghost-btn" title="维护材料单价 / 机床时租">⚙ 价格维护</button>
+    </div>
   </header>
 
   <main class="layout">
@@ -31,24 +35,37 @@
     <section class="viewer-pane">
       <div id="drop" class="dropzone">
         <div id="viewer" class="viewer"></div>
+
+        <div class="viewer-toolbar" id="viewer-toolbar" hidden>
+          <button id="toggle-bbox" class="vt-btn active" title="显示/隐藏包围盒">□ 包围盒</button>
+          <button id="toggle-spin" class="vt-btn" title="自动旋转">↻ 旋转</button>
+          <button id="reset-view" class="vt-btn" title="复位视角">⊹ 复位</button>
+        </div>
+
         <div id="drop-hint" class="drop-hint">
           <div class="drop-hint-inner">
-            <div class="big">拖拽 / 点击上传</div>
+            <div class="icon">⬚</div>
+            <div class="big">拖拽 / 点击上传 3D 图纸</div>
             <div class="sub">.step · .stp · .igs · .iges · .stl &nbsp;(≤60MB)</div>
           </div>
         </div>
+
+        <div id="viewer-spinner" class="viewer-spinner hidden">
+          <div class="spinner"></div><span>解析中…</span>
+        </div>
+
         <input id="file" type="file" accept=".step,.stp,.igs,.iges,.stl" hidden />
       </div>
-      <div class="viewer-meta" id="viewer-meta"></div>
+      <div class="viewer-meta" id="viewer-meta">尚未上传文件</div>
     </section>
 
     <!-- ───────── Right: parameters + quote ───────── -->
     <section class="params-pane">
       <div class="card">
-        <h2>1 · 参数 Parameters</h2>
+        <h2><span class="step-no">1</span> 参数 Parameters</h2>
 
         <div id="manual-box" class="manual hidden">
-          <p class="muted">未解析到几何 / STEP 无内核——可手动输入外形尺寸：</p>
+          <p class="muted tiny">未解析到几何 / STEP 无内核——可手动输入外形尺寸：</p>
           <div class="grid3">
             <label>长 L (mm)<input id="m-l" type="number" min="0" step="0.1" /></label>
             <label>宽 W (mm)<input id="m-w" type="number" min="0" step="0.1" /></label>
@@ -59,6 +76,7 @@
 
         <label>材料 Material
           <select id="material"></select>
+          <span class="hint-price" id="mat-price"></span>
         </label>
 
         <div class="grid2">
@@ -82,15 +100,15 @@
         </div>
 
         <div class="checks">
-          <label class="chk"><input id="tight" type="checkbox" /> 精密公差 Tight tol.</label>
-          <label class="chk"><input id="fiveaxis" type="checkbox" /> 五轴 5-axis</label>
-          <label class="chk"><input id="rush" type="checkbox" /> 加急 Rush</label>
+          <label class="chk"><input id="tight" type="checkbox" /> <span>精密公差 Tight</span></label>
+          <label class="chk"><input id="fiveaxis" type="checkbox" /> <span>五轴 5-axis</span></label>
+          <label class="chk"><input id="rush" type="checkbox" /> <span>加急 Rush</span></label>
         </div>
 
         <div class="holes">
           <div class="holes-head">
             <span>孔特征 Holes / Threads</span>
-            <button id="add-hole" class="mini">+ 添加</button>
+            <button id="add-hole" class="mini">+ 添加孔</button>
           </div>
           <table id="holes-table">
             <thead><tr><th>Ø (mm)</th><th>深 Depth</th><th>数量</th><th>攻丝</th><th></th></tr></thead>
@@ -99,14 +117,16 @@
           <p class="muted tiny">STEP 通常不含公差/螺纹信息，请在此声明，否则系统会漏算成本。</p>
         </div>
 
-        <button id="quote-btn" class="primary" disabled>生成报价 Get Quote</button>
-        <div id="error" class="error hidden"></div>
+        <button id="quote-btn" class="primary" disabled>
+          <span class="btn-label">生成报价 Get Quote</span>
+        </button>
+        <p class="muted tiny center" id="live-hint" hidden>参数改动会实时预览，点按钮可存入历史</p>
       </div>
 
       <div class="card">
         <div class="hist-head">
           <h2>最近报价 Recent quotes</h2>
-          <button id="hist-refresh" class="mini">刷新</button>
+          <button id="hist-refresh" class="mini">↻ 刷新</button>
         </div>
         <table class="hist" id="hist-table"><tbody></tbody></table>
         <p class="muted tiny" id="hist-empty">暂无历史 · 生成报价后自动保存</p>
@@ -116,39 +136,64 @@
 
   <!-- ───────── Quote result ───────── -->
   <section id="result" class="result hidden">
+    <div class="result-banner">
+      <h2><span class="step-no">2</span> 报价结果 Quote</h2>
+      <span class="badge live" id="result-badge" hidden>实时预览 Live</span>
+    </div>
     <div class="result-grid">
       <div class="card">
-        <h2>几何解析 Geometry</h2>
+        <h3>几何解析 Geometry</h3>
         <table class="kv" id="geo-table"></table>
       </div>
       <div class="card">
-        <h2>工艺 / 工时 Process plan</h2>
+        <h3>工艺 / 工时 Process plan</h3>
         <table class="kv" id="plan-table"></table>
       </div>
       <div class="card price-card">
-        <h2>单件报价 Unit price</h2>
+        <h3>单件报价 Unit price</h3>
         <div class="bignum" id="bignum">—</div>
+        <div class="bignum-sub" id="bignum-sub"></div>
         <table class="kv" id="cost-table"></table>
       </div>
     </div>
 
     <div class="card">
       <div class="tiers-head">
-        <h2>阶梯报价 Quantity breaks</h2>
-        <button id="pdf-btn" class="primary small">下载 PDF 报价单</button>
+        <h3>阶梯报价 Quantity breaks</h3>
+        <button id="pdf-btn" class="primary small">⬇ 下载 PDF 报价单</button>
       </div>
       <table class="tiers" id="tier-table"></table>
     </div>
 
     <div class="card" id="warn-card">
-      <h2>工艺提示 Notes &amp; DFM</h2>
-      <ul id="warn-list"></ul>
+      <h3>工艺提示 Notes &amp; DFM</h3>
+      <ul id="warn-list" class="warn-list"></ul>
     </div>
   </section>
 
   <footer class="foot">
     自动估算，仅供参考；最终以工程评审为准 · Auto estimate — subject to engineering review.
   </footer>
+
+  <!-- ───────── Admin price modal ───────── -->
+  <div id="admin-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>价格维护 Price maintenance</h2>
+        <button id="admin-close" class="icon-btn">✕</button>
+      </div>
+      <p class="muted tiny">改动立即对新报价生效（叠加在基础数据上，不改源文件）。</p>
+      <h3>材料单价 Material ¥/kg</h3>
+      <div id="admin-materials" class="admin-grid"></div>
+      <h3>机床时租 Machine ¥/h</h3>
+      <div id="admin-machines" class="admin-grid"></div>
+      <div class="modal-foot">
+        <button id="admin-save" class="primary small">保存并刷新报价</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-wrap" class="toast-wrap"></div>
 
   <script type="module" src="/static/app.js"></script>
 </body>
