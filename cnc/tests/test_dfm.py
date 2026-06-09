@@ -63,6 +63,22 @@ def test_unit_suspect_on_sub_3mm_part():
         metrics_from_stl_bytes(cube_stl(50.0)), analyze(metrics_from_stl_bytes(cube_stl(50.0)))))
 
 
+def test_tolerance_feasibility_vs_part_size():
+    import trimesh
+    def codes(ext, tol):
+        b = trimesh.creation.box(ext); b.apply_translation([e / 2 for e in ext])
+        sb = b.export(file_type="stl")
+        return {d["code"] for d in build_quote(metrics_from_stl_bytes(sb),
+                QuoteRequest(material="AL6061", quantity=5, tolerance=tol),
+                mesh_stl=sb, backend="analytic")["dfm"]}
+    # ±0.02 on a 600mm part is beyond reliable 3-axis capability → flag
+    assert "tol_feasibility" in codes((600, 200, 40), "ultra")
+    # ±0.02 on a 40mm precision part is achievable → no flag
+    assert "tol_feasibility" not in codes((40, 30, 20), "ultra")
+    # loose standard tolerance never flags
+    assert "tol_feasibility" not in codes((600, 200, 40), "standard")
+
+
 def test_high_material_removal_flagged_for_sparse_part():
     import trimesh
     p1 = trimesh.creation.box((100, 80, 5)); p1.apply_translation((50, 40, 2.5))

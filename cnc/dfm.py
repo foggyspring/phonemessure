@@ -47,6 +47,7 @@ def analyze_dfm(
     wall_auto: bool = False,
     holes_auto: bool = False,
     watertight: bool = True,
+    tol_mm: float | None = None,
 ) -> list[dict]:
     out: list[dict] = []
     dims = sorted(metrics.dims_mm)
@@ -168,6 +169,18 @@ def analyze_dfm(
         out.append(_f("info", "tight_tol", "精密公差 Tight tolerance",
                       "精密公差需额外检测与慢走刀。",
                       "仅对关键尺寸标注紧公差以控成本。"))
+
+    # ---- tolerance feasibility vs part size ----
+    # Achievable 3-axis accuracy widens with size (thermal growth, fixturing,
+    # tool deflection): roughly ±(0.02 + 0.00008·L) mm. A request tighter than
+    # that on a large part is hard to hold and to gauge.
+    if tol_mm and tol_mm > 0 and longest > 0:
+        achievable = 0.01 + 0.00008 * longest
+        if tol_mm < achievable:
+            out.append(_f("medium", "tol_feasibility", "公差相对尺寸偏紧 Tolerance vs size",
+                          f"在最长边 {longest:.0f}mm 上要求 ±{tol_mm:g}mm，"
+                          f"常规精密三轴可达约 ±{achievable:.3f}mm，难稳定保证。",
+                          "放宽非关键尺寸公差，或改恒温间/精密机床并预留检测成本。"))
 
     # ---- non-watertight mesh: volume (→ material cost) less reliable ----
     if not watertight:
