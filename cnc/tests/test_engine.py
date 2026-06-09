@@ -210,3 +210,13 @@ def test_surface_roughness_scales_finishing():
     mir = build_quote(m, QuoteRequest(material="AL6061", quantity=1, surface_finish="mirror"), mesh_stl=sb, backend="analytic")
     assert mir["plan"]["times"]["finishing_min"] > std["plan"]["times"]["finishing_min"]
     assert mir["quote"]["requested"]["unit_price_cny"] > std["quote"]["requested"]["unit_price_cny"]
+
+
+def test_material_suggestions_cheaper_same_category():
+    q = build_quote(_metrics(), QuoteRequest(material="SUS316", quantity=5))
+    s = q["material_suggestions"]
+    assert s and all(x["savings_pct"] > 0 for x in s)
+    base = q["quote"]["requested"]["unit_price_cny"]
+    assert all(x["unit_price_cny"] < base for x in s)
+    # plastics shouldn't be suggested for a metal part
+    assert all(k not in [x["key"] for x in s] for k in ["POM", "ABS", "PA6"])

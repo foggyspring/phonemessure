@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from . import estimators
 from .calibration import factor_for
 from .dfm import analyze_dfm
+from .suggest import suggest_materials
 from .engine import ShopData, load
 from .engine import costing as costing_mod
 from .geometry import MeshMetrics, analyze
@@ -265,5 +266,6 @@ def build_quote(
         "dfm": analyze_dfm(metrics, feat, tight_tolerance=req.tight_tolerance,
                            requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
                            wall_auto=auto_wall is not None, holes_auto=holes_auto),
+        "material_suggestions": suggest_materials(feat, material, finish, shop, req.quantity),
         "estimator": backend_info,
     }

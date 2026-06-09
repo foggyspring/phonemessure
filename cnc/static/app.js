@@ -478,6 +478,7 @@ function renderResult(p, isLive) {
     ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
     ` · 交期 ${q.lead_days} 天${valid}`;
   renderLeadOptions(q, isLive);
+  renderMaterialSuggestions(p);
   const psrc = p.input?.price_source;
   const srcTag = psrc && psrc !== "static"
     ? ` <span class="muted tiny">(${psrc === "manual override" ? "改价" : psrc.split(" ")[0]})</span>` : "";
@@ -530,6 +531,19 @@ function renderResult(p, isLive) {
   const wasHidden = resEl.classList.contains("hidden");
   resEl.classList.remove("hidden");
   if (wasHidden) { resEl.classList.add("reveal"); resEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
+}
+
+// ───────────────────────── material suggestions ─────────────────────────
+function renderMaterialSuggestions(p) {
+  const el = $("mat-suggest");
+  const s = p.material_suggestions || [];
+  if (!s.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<span class="muted tiny">更省材料（如性能允许 if properties allow）：</span> ` +
+    s.map((m) => `<button class="suggest-chip" data-mat="${esc(m.key)}">${esc(m.label.split(" ")[0])} ↓${m.savings_pct}%</button>`).join(" ");
+  el.querySelectorAll(".suggest-chip").forEach((b) => b.addEventListener("click", () => {
+    $("material").value = b.dataset.mat;
+    updateMatPrice(); recolorMesh(b.dataset.mat); requestQuote(true);
+  }));
 }
 
 // ───────────────────────── lead-time options ─────────────────────────
