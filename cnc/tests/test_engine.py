@@ -131,6 +131,21 @@ def test_threaded_holes_add_tapping_time():
     assert tapped["plan"]["times"]["per_part_min"] > plain["plan"]["times"]["per_part_min"]
 
 
+def test_process_steps_routing_card():
+    q = build_quote(
+        _metrics(),
+        QuoteRequest(material="AL6061", quantity=10,
+                     holes=[Hole(diameter_mm=6.0, depth_mm=20.0, count=4, threaded=True)]),
+    )
+    steps = q["plan"]["process_steps"]
+    names = [s["name"] for s in steps]
+    # ordered, numbered routing card with the core machining工序 present
+    assert [s["step"] for s in steps] == list(range(1, len(steps) + 1))
+    assert any("下料" in n for n in names) and any("精铣" in n for n in names)
+    assert any("攻丝" in n for n in names)        # tapping appears for threaded holes
+    assert all("scope" in s and s["detail"] for s in steps)
+
+
 def test_tight_tolerance_raises_price():
     base = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=5))
     tight = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=5, tight_tolerance=True))

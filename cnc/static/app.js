@@ -1092,9 +1092,19 @@ function renderEstimator(p) {
   b.textContent = "工时来源：" + (BACKEND_LABEL[used] || used);
   b.className = "badge " + (used === "analytic" ? "info-badge" : "tp-badge");
 
+  const steps = p.plan?.process_steps || [];
+  const routing = steps.length
+    ? `<div class="ops-title">工艺路线 Process routing</div>` +
+      `<table class="routing"><tr><th>#</th><th>工序 Step</th><th>说明</th><th>工时</th><th>范围</th></tr>` +
+      steps.map((s) => `<tr><td>${s.step}</td><td>${s.name}</td><td class="muted">${s.detail}</td>` +
+        `<td>${s.minutes > 0 ? s.minutes.toFixed(2) + " min" : "—"}</td>` +
+        `<td class="tiny muted">${s.scope}</td></tr>`).join("") + `</table>`
+    : "";
+
   const ops = p.plan?.operations || [];
   const el = $("ops-detail");
-  if (!ops.length) { el.innerHTML = ""; return; }
+  if (!ops.length && !routing) { el.innerHTML = ""; return; }
+  if (!ops.length) { el.innerHTML = routing; return; }
   const fmt = (o) => {
     if (o.op === "roughing") return `开粗 · Z分层 ${o.levels} 层 · 刀路 ${(o.path_len_mm / 1000).toFixed(2)} m @ ${o.feed_mm_min}mm/min → ${o.minutes}min`;
     if (o.op === "finishing") {
@@ -1105,7 +1115,8 @@ function renderEstimator(p) {
     if (o.op === "drilling") return `钻孔 ${o.holes} 个（螺纹 ${o.threaded}）· 总深 ${o.total_depth_mm}mm → 钻 ${o.drill_minutes} / 攻 ${o.tap_minutes}min`;
     return JSON.stringify(o);
   };
-  el.innerHTML = `<div class="ops-title">刀路仿真明细 Toolpath detail</div>` +
+  el.innerHTML = routing +
+    `<div class="ops-title">刀路仿真明细 Toolpath detail</div>` +
     ops.map((o) => `<div class="ops-row">${fmt(o)}</div>`).join("");
 }
 

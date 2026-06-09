@@ -235,6 +235,13 @@ button.primary.loading::after {
   background: var(--panel2); border-left: 2px solid var(--accent); border-radius: 6px;
   font-variant-numeric: tabular-nums; line-height: 1.45;
 }
+table.routing { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 12px;
+  font-variant-numeric: tabular-nums; }
+table.routing th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px;
+  border-bottom: 1px solid var(--border); font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; }
+table.routing td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.routing tr:last-child td { border-bottom: none; }
+table.routing td:nth-child(4) { text-align: right; white-space: nowrap; }
 .result-grid { display: grid; grid-template-columns: 1fr 1fr 1.05fr; gap: 18px; }
 @media (max-width: 920px) { .result-grid { grid-template-columns: 1fr; } }
 table.kv { width: 100%; border-collapse: collapse; font-size: 13px; }

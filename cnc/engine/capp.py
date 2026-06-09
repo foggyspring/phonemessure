@@ -78,7 +78,47 @@ class ProcessPlan:
         d = asdict(self)
         d["machine"] = self.machine.key
         d["times"]["per_part_min"] = round(self.times.per_part_min, 2)
+        d["process_steps"] = self.process_steps()
         return d
+
+    def process_steps(self) -> list[dict]:
+        """Human-readable routing card (工序卡): ordered工序 with per-part minutes.
+
+        Lets the customer see the plan as a real shop traveller —
+        下料→编程→装夹→粗铣→精铣→钻孔→攻丝→检验 — instead of a flat time blob.
+        Only steps with real time are listed; one-time工序 are marked per-batch.
+        """
+        t = self.times
+        steps: list[dict] = []
+
+        def add(name: str, detail: str, minutes: float, *, per_batch: bool = False):
+            if minutes <= 0.005:
+                return
+            steps.append({"step": len(steps) + 1, "name": name, "detail": detail,
+                          "minutes": round(minutes, 2),
+                          "scope": "每批 per-batch" if per_batch else "每件 per-part"})
+
+        # stock prep time is bundled into material/fixturing; list it informationally
+        steps.append({"step": 1, "name": "下料/备料 Stock prep",
+                      "detail": f"标准板锯切至毛坯 {self.stock.length_mm:g}×"
+                                f"{self.stock.width_mm:g}×{self.stock.height_mm:g}mm",
+                      "minutes": 0.0, "scope": "每批 per-batch"})
+        add("编程/首件 Programming & FAI",
+            f"CAM 编程 + 首件检验（共 {self.tools} 把刀，{self.setups} 次装夹）",
+            self.one_time_min, per_batch=True)
+        add("装夹 Fixturing", f"{self.setups} 次装夹/找正", t.fixturing_min)
+        add("粗铣 Roughing", f"去除余量 {self.removed_volume_cm3:g}cm³", t.roughing_min)
+        add("精铣 Finishing",
+            f"精加工面积 {self.part_area_cm2:g}cm² (复杂度系数 {self.complexity_factor:.2f})",
+            t.finishing_min)
+        add("钻孔 Drilling", "按特征孔位钻孔", t.drilling_min)
+        add("攻丝 Tapping", "螺纹孔攻丝", t.tapping_min)
+        add("换刀 Tool change", f"{self.tools} 把刀换刀", t.toolchange_min)
+        add("检验 Inspection", "尺寸/公差检验", t.inspection_min)
+        # renumber after conditional drops
+        for i, s in enumerate(steps, 1):
+            s["step"] = i
+        return steps
 
 
 def _estimate_setups(feat: FeatureSet, machine: Machine) -> int:
