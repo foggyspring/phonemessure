@@ -68,6 +68,19 @@ def analyze_dfm(
                       f"从模型识别到 {n} 个孔（{len(feat.holes)} 种规格），用于钻孔工时与提示。",
                       "请核对孔数/孔径，并补充螺纹要求（无法从网格判断）。"))
 
+    # ---- buy-to-fly: a sparse part milled from a solid block wastes metal ----
+    # (machinist insight: a thin L-bracket fills ~13% of its envelope → ~87% of
+    # the block becomes chips; roughing is slow and the stock cost is mostly
+    # scrapped). Plate-shaped parts fill their bbox ~100%, so they don't flag.
+    bbox = metrics.bbox_volume_mm3
+    if bbox > 0:
+        fill = metrics.volume_mm3 / bbox
+        if 0 < fill < 0.18:
+            out.append(_f("low", "material_removal", "高去料比 High material removal",
+                          f"零件仅填充包络的 {fill*100:.0f}%，约 {(1-fill)*100:.0f}% 毛坯被切除成屑，"
+                          "开粗工时与料耗偏高。",
+                          "可考虑近净成形毛坯（型材/锻件/焊接件）或调整毛坯朝向以减少去料。"))
+
     # ---- slender / whippy part ----
     if shortest > 0:
         ratio = longest / shortest

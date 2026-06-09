@@ -63,6 +63,18 @@ def test_unit_suspect_on_sub_3mm_part():
         metrics_from_stl_bytes(cube_stl(50.0)), analyze(metrics_from_stl_bytes(cube_stl(50.0)))))
 
 
+def test_high_material_removal_flagged_for_sparse_part():
+    import trimesh
+    p1 = trimesh.creation.box((100, 80, 5)); p1.apply_translation((50, 40, 2.5))
+    p2 = trimesh.creation.box((5, 80, 60)); p2.apply_translation((2.5, 40, 30))
+    sb = p1.union(p2).export(file_type="stl")
+    m = metrics_from_stl_bytes(sb)
+    assert "material_removal" in {d["code"] for d in analyze_dfm(m, analyze(m))}
+    # a solid block fills its envelope → no high-removal flag
+    assert "material_removal" not in {d["code"] for d in analyze_dfm(
+        metrics_from_stl_bytes(cube_stl(50.0)), analyze(metrics_from_stl_bytes(cube_stl(50.0))))}
+
+
 def test_tap_drill_recommendation_for_metric_thread():
     m = metrics_from_stl_bytes(cube_stl(50.0))
     feat = analyze(m, holes=[Hole(diameter_mm=6.0, depth_mm=15.0, count=4, threaded=True)])
