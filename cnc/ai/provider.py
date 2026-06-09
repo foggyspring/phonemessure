@@ -108,7 +108,12 @@ class MockProvider(LLMProvider):
         wants_analyze = any(k in low for k in ["分析", "评估", "analyz", "review", "看看", "检查"])
         wants_setprice = any(k in low for k in ["改价", "设置价格", "set price", "update price", "调价"])
 
-        if wants_setprice and "set_price" in names:
+        wants_calib = any(k in low for k in ["实测", "实际工时", "反标定", "校准工时", "calibrat"])
+        if wants_calib and "record_actual_time" in names:
+            mm = re.search(r"(\d+(?:\.\d+)?)\s*(?:分钟|min)", user, re.I)
+            call("record_actual_time", {"material": mat or args.get("material", ""),
+                                        "actual_min": float(mm.group(1)) if mm else 0})
+        elif wants_setprice and "set_price" in names:
             call("set_price", _parse_setprice(user))
         elif wants_analyze and "get_quote" in names:
             if "get_quote" in names:
