@@ -99,6 +99,14 @@ def analyze_dfm(
             out.append(_f("medium", "small_tap", "细牙螺纹孔 Small tapped hole",
                           f"Ø{d:g} 螺纹孔攻丝易断丝。",
                           "确认螺距，必要时改螺纹铣。"))
+        # thread engagement depth: AL/软材料推荐 1.5–2×D，<1×D 螺纹强度不足
+        if h.threaded and d > 0:
+            eng = depth / d
+            if eng < 1.0:
+                out.append(_f("medium", "thread_engage", "螺纹啮合深度不足 Thread engagement",
+                              f"Ø{d:g} 螺纹有效深度 {depth:g}mm（约 {eng:.1f}×D），"
+                              "铝/塑料推荐 1.5–2×D 以保证强度。",
+                              "加深螺纹孔，或改用螺纹护套(钢丝螺套)提升承载。"))
 
     # ---- undercut / faces unreachable from ±axis (3-axis can't reach) ----
     if not requires_5axis and feat.undercut_frac > 0.2:

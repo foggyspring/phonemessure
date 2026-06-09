@@ -63,6 +63,17 @@ def test_unit_suspect_on_sub_3mm_part():
         metrics_from_stl_bytes(cube_stl(50.0)), analyze(metrics_from_stl_bytes(cube_stl(50.0)))))
 
 
+def test_thread_engagement_too_shallow():
+    # blind tapped hole with < 1×D engagement → strength warning
+    m = metrics_from_stl_bytes(cube_stl(50.0))
+    feat = analyze(m, holes=[Hole(diameter_mm=6.0, depth_mm=4.0, count=4, threaded=True)])
+    codes = {d["code"] for d in analyze_dfm(m, feat)}
+    assert "thread_engage" in codes
+    # adequate engagement (≥1×D) does not flag
+    feat2 = analyze(m, holes=[Hole(diameter_mm=6.0, depth_mm=10.0, count=4, threaded=True)])
+    assert "thread_engage" not in {d["code"] for d in analyze_dfm(m, feat2)}
+
+
 def test_non_watertight_mesh_flagged():
     # ~30% of real web meshes are non-watertight → volume/material cost less
     # reliable. Drop two faces from a box to make an open mesh.
