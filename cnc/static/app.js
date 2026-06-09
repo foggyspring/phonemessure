@@ -601,9 +601,42 @@ async function sendAI() {
   } finally { aiState.busy = false; }
 }
 
+const AI_TOOL_META = {
+  get_quote: { ico: "💰", label: "报价" }, compare_materials: { ico: "⚖️", label: "材料对比" },
+  suggest_cheaper_material: { ico: "💡", label: "更省建议" }, analyze_dfm: { ico: "🔍", label: "DFM 分析" },
+  list_materials: { ico: "📋", label: "材料列表" }, set_price: { ico: "✏️", label: "改价" },
+  record_actual_time: { ico: "🎯", label: "录入实测工时" },
+};
+
 function renderAIAction(a) {
-  // simple line for now; rich action cards arrive in the next iteration
-  appendAIMsg("bot", `🔧 ${a.tool}：${a.summary}`);
+  const m = AI_TOOL_META[a.tool] || { ico: "🔧", label: a.tool };
+  const args = Object.entries(a.arguments || {}).map(([k, v]) => `${k}=${v}`).join(" ");
+  const card = document.createElement("div");
+  card.className = "ai-action" + (a.error ? " err" : "");
+  card.innerHTML =
+    `<div class="ai-action-head">${m.ico} <b>${esc(m.label)}</b>` +
+    (args ? ` <span class="ai-args">${esc(args)}</span>` : "") +
+    (a.error ? ` <span class="ai-err">⚠ ${esc(a.error)}</span>` : ` <span class="ai-ok">✓</span>`) +
+    `</div><div class="ai-action-body">${esc(a.summary || "")}</div>`;
+  if (a.tool === "get_quote" && a.arguments && !a.error) {
+    const btn = document.createElement("button");
+    btn.className = "ai-apply"; btn.textContent = "↪ 应用到表单并报价";
+    btn.addEventListener("click", () => applyAIQuote(a.arguments));
+    card.appendChild(btn);
+  }
+  $("ai-messages").appendChild(card);
+  $("ai-messages").scrollTop = $("ai-messages").scrollHeight;
+}
+
+function applyAIQuote(args) {
+  if (args.material) { $("material").value = args.material; recolorMesh(args.material); }
+  if (args.quantity) $("quantity").value = args.quantity;
+  if (args.tolerance) $("tolerance").value = args.tolerance;
+  if (args.surface_finish) $("surface_finish").value = args.surface_finish;
+  if (args.finish) $("finish").value = args.finish;
+  updateMatPrice();
+  requestQuote(true);
+  toast("已按 AI 建议更新报价", "ok");
 }
 
 function initAI() {

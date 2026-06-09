@@ -422,3 +422,14 @@ table.hist .h-id { color: var(--muted2); font-family: ui-monospace, "SF Mono", m
 .ai-input button { align-self: stretch; }
 .ai-foot { font-size: 10px; color: var(--muted2); padding: 0 14px 10px; }
 .ai-typing { color: var(--muted); font-size: 12px; }
+.ai-action { align-self: stretch; background: var(--panel); border: 1px solid var(--border2);
+  border-left: 3px solid var(--accent); border-radius: 9px; padding: 9px 11px; font-size: 12px; }
+.ai-action.err { border-left-color: var(--danger); }
+.ai-action-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ai-args { color: var(--muted); font-size: 11px; background: var(--panel3); padding: 1px 6px; border-radius: 8px; }
+.ai-ok { color: var(--accent2); margin-left: auto; }
+.ai-err { color: var(--danger); margin-left: auto; }
+.ai-action-body { color: var(--text); margin-top: 5px; line-height: 1.55; }
+.ai-apply { margin-top: 8px; width: 100%; background: rgba(47,129,247,.14); color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 8px; padding: 5px; font-size: 12px; cursor: pointer; }
+.ai-apply:hover { background: rgba(47,129,247,.26); }
