@@ -209,6 +209,20 @@ def test_suspicious_tiny_part_warns_units():
     assert any("单位" in w for w in q["warnings"])
 
 
+def test_min_order_floor_tops_up_small_orders():
+    # a cheap single plastic part falls below the ¥200 minimum order
+    small = build_quote(metrics_from_stl_bytes(cube_stl(20.0)),
+                        QuoteRequest(material="ABS", quantity=1))["quote"]
+    assert small["min_order_topup_cny"] > 0
+    assert small["net_total_cny"] == small["min_order_cny"]
+    assert abs(small["net_total_cny"] - (small["line_net_cny"] + small["min_order_topup_cny"])) < 0.01
+    # tax is charged on the floored net, grand total consistent
+    assert abs(small["total_incl_tax_cny"] - small["net_total_cny"] * (1 + small["tax_rate"])) < 0.05
+    # a normal order is unaffected (no top-up)
+    big = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=10))["quote"]
+    assert big["min_order_topup_cny"] == 0.0
+
+
 def test_procurement_lead_extends_delivery_for_exotic_material():
     m = _metrics()
     al = build_quote(m, QuoteRequest(material="AL6061", quantity=5))["quote"]

@@ -482,10 +482,13 @@ function renderResult(p, isLive) {
   const taxPct = ((q.tax_rate || 0) * 100).toFixed(0);
   const grand = q.total_incl_tax_cny != null ? q.total_incl_tax_cny : r.line_total_cny;
   const valid = q.valid_until ? ` · 有效期至 ${q.valid_until}` : "";
+  const minNote = q.min_order_topup_cny > 0
+    ? ` · <span class="warn-mark">已按起订额 ${money(q.min_order_cny || q.net_total_cny, cur)} 计，补差 ${money(q.min_order_topup_cny, cur)}</span>`
+    : "";
   $("bignum-sub").innerHTML =
     `× ${r.quantity} 件 · 净额 ${money(q.net_total_cny != null ? q.net_total_cny : r.line_total_cny, cur)}` +
     ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
-    ` · 交期 ${q.lead_days} 天${q.delivery_date ? `（约 ${q.delivery_date} 交付）` : ""}${valid}`;
+    ` · 交期 ${q.lead_days} 天${q.delivery_date ? `（约 ${q.delivery_date} 交付）` : ""}${valid}${minNote}`;
   const pw = $("price-why");
   if (pw) {
     const drv = p.price_drivers;

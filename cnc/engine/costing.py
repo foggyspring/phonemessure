@@ -64,13 +64,18 @@ class Quote:
     lead_time: str = "standard"
     lead_time_options: list = field(default_factory=list)
     addons: list = field(default_factory=list)
+    min_order_cny: float = 0.0
 
     def to_dict(self) -> dict:
         # Tax is charged on the requested line total; the grand total is what
         # the customer pays. Quote carries a validity window since prices move.
         from datetime import date, timedelta
 
-        net = round(self.requested.unit_price_cny, 2) * self.requested.quantity
+        line_net = round(self.requested.unit_price_cny, 2) * self.requested.quantity
+        # Minimum-order floor: a shop's fixed admin/invoicing/handling cost means
+        # very small orders are billed at the minimum, not the raw line total.
+        net = max(line_net, self.min_order_cny)
+        min_order_topup = round(net - line_net, 2)
         tax = net * self.tax_rate
         valid_until = (date.today() + timedelta(days=self.valid_days)).isoformat() \
             if self.valid_days else None
@@ -91,6 +96,9 @@ class Quote:
             "tax_rate": self.tax_rate,
             "tax_label": self.tax_label,
             "tax_cny": round(tax, 2),
+            "line_net_cny": round(line_net, 2),
+            "min_order_cny": round(self.min_order_cny, 2),
+            "min_order_topup_cny": min_order_topup,
             "net_total_cny": round(net, 2),
             "total_incl_tax_cny": round(net + tax, 2),
             "valid_days": self.valid_days,
@@ -283,4 +291,5 @@ def price(
         valid_days=int(biz.get("quote_valid_days", 0)),
         material_gross_cny=material_gross_cny,
         scrap_credit_cny=scrap_credit_cny,
+        min_order_cny=float(biz.get("min_order_cny", 0.0)),
     )

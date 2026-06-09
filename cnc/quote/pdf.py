@@ -326,7 +326,13 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
 
     # ---- Order totals for the requested quantity (incl. tax) ----
     tax_pct = quote.get("tax_rate", 0) * 100
-    tot_rows = [
+    tot_rows = []
+    if quote.get("min_order_topup_cny", 0) > 0:
+        tot_rows.append([f"行小计 Line subtotal (×{req['quantity']})",
+                         _money(quote.get("line_net_cny", req["line_total_cny"]), cur)])
+        tot_rows.append([f"起订补差 Min-order top-up (起订 {_money(quote.get('min_order_cny', 0), cur)})",
+                         _money(quote["min_order_topup_cny"], cur)])
+    tot_rows += [
         [f"订单合计 Order total (×{req['quantity']})", _money(quote.get("net_total_cny", req["line_total_cny"]), cur)],
         [f"{quote.get('tax_label','税')} ({tax_pct:.0f}%)", _money(quote.get("tax_cny", 0), cur)],
         ["含税总计 Grand total", _money(quote.get("total_incl_tax_cny", req["line_total_cny"]), cur)],
