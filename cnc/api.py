@@ -80,6 +80,23 @@ _LOGIN_WINDOW_S = 60
 _login_fails: dict[str, deque] = defaultdict(deque)
 
 
+_AI_MAX_PER_MIN = 40
+_ai_calls: dict[str, deque] = defaultdict(deque)
+_AI_MSG_MAX = 2000
+_AI_HISTORY_MAX = 24
+
+
+def _ai_throttled(ip: str) -> bool:
+    dq = _ai_calls[ip]
+    now = time.time()
+    while dq and now - dq[0] > 60:
+        dq.popleft()
+    if len(dq) >= _AI_MAX_PER_MIN:
+        return True
+    dq.append(now)
+    return False
+
+
 def _login_throttled(ip: str) -> bool:
     dq = _login_fails[ip]
     now = time.time()
@@ -198,6 +215,7 @@ def build_app() -> FastAPI:
 
     @app.post("/api/ai/chat")
     async def ai_chat(
+        request: Request,
         message: str = Form(...),
         params: str = Form("{}"),
         history: str = Form("[]"),
@@ -206,6 +224,12 @@ def build_app() -> FastAPI:
     ) -> JSONResponse:
         from .ai.agent import run_agent
         from .ai.tools import AgentContext
+        ip = request.client.host if request.client else "unknown"
+        if _ai_throttled(ip):
+            raise HTTPException(status_code=429, detail="AI 请求过于频繁，请稍后再试。")
+        message = str(message)
+        if len(message) > _AI_MSG_MAX:
+            raise HTTPException(status_code=400, detail=f"消息过长（>{_AI_MSG_MAX} 字）。")
         try:
             p = json.loads(params) if params else {}
             hist = json.loads(history) if history else []
@@ -213,6 +237,7 @@ def build_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=f"bad params/history: {exc}") from exc
         if not isinstance(p, dict) or not isinstance(hist, list):
             raise HTTPException(status_code=400, detail="params must be object, history a list")
+        hist = hist[-_AI_HISTORY_MAX:]            # cap context window
 
         metrics = mesh_stl = None
         if file is not None:
