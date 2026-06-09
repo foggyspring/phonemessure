@@ -163,3 +163,20 @@ def test_admin_config_and_business_finish_overrides(client):
     assert client.put("/api/admin/price", headers=h, json={
         "kind": "business", "key": "", "field": "quantity_breaks", "value": 5}).status_code == 400
     assert client.get("/api/admin/config").status_code == 401   # admin-only
+
+
+def test_all_process_params_maintainable(client):
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    cfg = client.get("/api/admin/config", headers=h).json()
+    assert {"tiers", "capp", "cutting"} <= set(cfg)
+    assert "lead_time_tiers" in cfg["tiers"] and "AL6061" in cfg["cutting"]
+    P = lambda **b: client.put("/api/admin/price", headers=h, json=b).status_code
+    assert P(kind="business", key="", field="lead_time_tiers.express.factor", value=1.5) == 200
+    assert P(kind="business", key="", field="tolerance_classes.ultra.machining_factor", value=1.4) == 200
+    assert P(kind="capp", key="", field="programming_min_base", value=40) == 200
+    assert P(kind="cutting", key="AL6061", field="vc_rough", value=400) == 200
+    assert P(kind="material", key="AL6061", field="form_factor", value=2.0) == 200
+    # invalid paths rejected
+    assert P(kind="business", key="", field="lead_time_tiers.express.label", value=1) == 400
+    assert P(kind="capp", key="", field="margin", value=1) == 400
+    assert P(kind="cutting", key="AL6061", field="bogus", value=1) == 400

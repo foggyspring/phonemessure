@@ -179,8 +179,8 @@ def set_override(
     kind: str, key: str, field: str, value: float,
     *, path: str | os.PathLike | None = None,
 ) -> None:
-    if kind not in ("material", "machine", "finish", "business"):
-        raise ValueError("kind must be material/machine/finish/business")
+    if kind not in ("material", "machine", "finish", "business", "capp", "cutting"):
+        raise ValueError("kind must be material/machine/finish/business/capp/cutting")
     with _connect(path) as conn:
         conn.execute(
             "INSERT INTO price_overrides (kind, key, field, value, updated_at) "

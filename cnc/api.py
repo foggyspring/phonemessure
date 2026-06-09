@@ -602,7 +602,7 @@ def build_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=f"invalid body: {exc}") from exc
 
         # Validate the key exists and the field is overridable.
-        from .engine.shopdata import _BUSINESS_OVERRIDABLE, _OVERRIDE_FIELDS
+        from .engine.shopdata import _CAPP_OVERRIDABLE, _OVERRIDE_FIELDS, business_field_ok
         shop = load()
         if kind in ("material", "machine", "finish"):
             catalog = {"material": shop.materials, "machine": shop.machines,
@@ -612,12 +612,22 @@ def build_app() -> FastAPI:
             if field not in _OVERRIDE_FIELDS[kind]:
                 raise HTTPException(status_code=400, detail=f"field '{field}' not overridable for {kind}")
         elif kind == "business":
-            if field not in _BUSINESS_OVERRIDABLE:
-                raise HTTPException(status_code=400,
-                                    detail=f"field '{field}' not a maintainable business param")
+            if not business_field_ok(field):
+                raise HTTPException(status_code=400, detail=f"field '{field}' not a maintainable business param")
             key = key or "business"
+        elif kind == "capp":
+            if field not in _CAPP_OVERRIDABLE:
+                raise HTTPException(status_code=400, detail=f"field '{field}' not a maintainable capp param")
+            key = key or "capp"
+        elif kind == "cutting":
+            from .estimators.toolpath import _CUTTING_OVERRIDABLE, _load_cutting
+            cut = _load_cutting()
+            if key not in cut.get("materials", {}):
+                raise HTTPException(status_code=404, detail=f"unknown cutting material '{key}'")
+            if field not in _CUTTING_OVERRIDABLE:
+                raise HTTPException(status_code=400, detail=f"field '{field}' not a maintainable cutting param")
         else:
-            raise HTTPException(status_code=400, detail="kind must be material/machine/finish/business")
+            raise HTTPException(status_code=400, detail="invalid kind")
         try:
             store.set_override(kind, key, field, value)
         except ValueError as exc:
@@ -632,8 +642,15 @@ def build_app() -> FastAPI:
     @app.get("/api/admin/config")
     def admin_config(_admin: dict = Depends(require_admin)) -> dict:
         """Everything an operator can maintain at runtime (with overrides applied)."""
-        from .engine.shopdata import _BUSINESS_OVERRIDABLE
+        from .engine.shopdata import _BUSINESS_NESTED, _BUSINESS_OVERRIDABLE, _CAPP_OVERRIDABLE
+        from .estimators.toolpath import _CUTTING_OVERRIDABLE, _load_cutting
         shop, _ = _effective_shop()
+        biz = shop.business
+        tiers = {arr: [{"key": el.get("key"), "label": el.get("label", el.get("key")),
+                        **{s: el.get(s) for s in subs}}
+                       for el in (biz.get(arr) or [])]
+                 for arr, subs in _BUSINESS_NESTED.items()}
+        cut = _load_cutting()
         return {
             "materials": {k: {"label": m.label, "price_cny_per_kg": m.price_cny_per_kg}
                           for k, m in shop.materials.items()},
@@ -642,8 +659,11 @@ def build_app() -> FastAPI:
             "finishes": {k: {"label": fn.label, "setup_cny": fn.setup_cny,
                              "per_dm2_cny": fn.per_dm2_cny, "min_cny": fn.min_cny}
                          for k, fn in shop.finishes.items() if k != "none"},
-            "business": {f: shop.business.get(f) for f in sorted(_BUSINESS_OVERRIDABLE)
-                         if shop.business.get(f) is not None},
+            "business": {f: biz.get(f) for f in sorted(_BUSINESS_OVERRIDABLE) if biz.get(f) is not None},
+            "tiers": tiers,
+            "capp": {f: shop.capp.get(f) for f in sorted(_CAPP_OVERRIDABLE) if shop.capp.get(f) is not None},
+            "cutting": {m: {f: v.get(f) for f in sorted(_CUTTING_OVERRIDABLE) if v.get(f) is not None}
+                        for m, v in cut.get("materials", {}).items()},
         }
 
     @app.delete("/api/admin/price")

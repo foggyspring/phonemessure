@@ -997,7 +997,33 @@ async function openAdmin() {
   const bg = $("admin-business"); bg.innerHTML = "";
   for (const [k, v] of Object.entries(cfg.business || {}))
     adminRow(bg, BIZ_LABELS[k] || k, "business", "", k, v, k.includes("rate") || k === "margin" ? 0.01 : 1);
+  // tier arrays (lead / tolerance / surface / addons) → field path
+  const tg = $("admin-tiers"); tg.innerHTML = "";
+  const tierLbl = { lead_time_tiers: "交期", tolerance_classes: "公差", surface_classes: "表面", addons: "增项" };
+  for (const [arr, list] of Object.entries(cfg.tiers || {})) {
+    for (const el of list) {
+      for (const [sub, val] of Object.entries(el)) {
+        if (sub === "key" || sub === "label" || val == null) continue;
+        adminRow(tg, `${tierLbl[arr]}·${el.label.split(" ")[0]}·${sub}`, "business", "",
+          `${arr}.${el.key}.${sub}`, val, 0.01);
+      }
+    }
+  }
+  const cp = $("admin-capp"); cp.innerHTML = "";
+  for (const [k, v] of Object.entries(cfg.capp || {})) adminRow(cp, k, "capp", "", k, v, 0.5);
+  // cutting per selected material
+  state.adminCutting = cfg.cutting || {};
+  const sel = $("admin-cut-mat"); sel.innerHTML = "";
+  for (const m of Object.keys(state.adminCutting)) { const o = document.createElement("option"); o.value = m; o.textContent = m; sel.appendChild(o); }
+  sel.onchange = renderAdminCutting; renderAdminCutting();
   $("admin-modal").classList.remove("hidden");
+}
+
+function renderAdminCutting() {
+  const cg = $("admin-cutting"); cg.innerHTML = "";
+  const mat = $("admin-cut-mat").value;
+  for (const [k, v] of Object.entries((state.adminCutting || {})[mat] || {}))
+    adminRow(cg, k, "cutting", mat, k, v, 0.01);
 }
 function closeAdmin() { $("admin-modal").classList.add("hidden"); }
 

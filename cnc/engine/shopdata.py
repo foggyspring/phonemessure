@@ -7,6 +7,7 @@ module so swapping the backing store later touches one file.
 """
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import dataclass, replace
 from functools import lru_cache
@@ -126,17 +127,52 @@ def load(data_dir: str | None = None) -> ShopData:
 
 # Fields an admin/supplier feed is allowed to override at runtime, per kind.
 _OVERRIDE_FIELDS = {
-    "material": {"price_cny_per_kg", "machinability", "density_g_cm3"},
-    "machine": {"rate_cny_per_hour", "base_mrr_cm3_min"},
+    "material": {"price_cny_per_kg", "machinability", "density_g_cm3",
+                 "form_factor", "scrap_credit_frac"},
+    "machine": {"rate_cny_per_hour", "base_mrr_cm3_min", "max_axes"},
     "finish": {"setup_cny", "per_dm2_cny", "min_cny"},
 }
 # Business/process scalars an operator may maintain at runtime (利润率/税率/去毛刺
-# /物流/最小起订 等). Only flat numeric keys — nested tier arrays stay in JSON.
+# /物流/最小起订 等).
 _BUSINESS_OVERRIDABLE = {
     "margin", "tax_rate", "tight_tolerance_margin_bonus", "rush_factor",
     "deburr_base_cny", "deburr_per_dm2_cny", "packaging_cny",
     "shipping_cny_per_kg", "min_order_cny", "quote_valid_days",
 }
+# Nested array params, addressed as "<array>.<key>.<sub>" (e.g.
+# "lead_time_tiers.express.factor"). {array: {editable sub-fields}}.
+_BUSINESS_NESTED = {
+    "lead_time_tiers": {"factor", "days"},
+    "tolerance_classes": {"margin_bonus", "machining_factor", "inspection_min"},
+    "surface_classes": {"finish_factor"},
+    "addons": {"batch_cny", "per_part_cny"},
+}
+# CAPP timing scalars (编程/装夹/首件/公差工时 等).
+_CAPP_OVERRIDABLE = {
+    "fixture_min_per_setup", "toolchange_min_per_tool", "programming_min_base",
+    "programming_min_per_complexity", "first_article_min",
+    "tight_tolerance_machining_factor", "tight_tolerance_inspection_min_per_part",
+    "min_machine_min_per_part", "stock_margin_mm",
+}
+
+
+def business_field_ok(field: str) -> bool:
+    """True if a business override field (flat or nested path) is editable."""
+    if "." in field:
+        parts = field.split(".")
+        return len(parts) == 3 and parts[0] in _BUSINESS_NESTED and parts[2] in _BUSINESS_NESTED[parts[0]]
+    return field in _BUSINESS_OVERRIDABLE
+
+
+def _set_business(biz: dict, field: str, value: float) -> None:
+    if "." in field:
+        arr, key, sub = field.split(".", 2)
+        for el in biz.get(arr, []):
+            if el.get("key") == key:
+                el[sub] = value
+                return
+    elif field in _BUSINESS_OVERRIDABLE:
+        biz[field] = value
 
 
 def apply_overrides(shop: ShopData, overrides: dict | None) -> ShopData:
@@ -173,11 +209,19 @@ def apply_overrides(shop: ShopData, overrides: dict | None) -> ShopData:
         if patch:
             finishes[key] = replace(finishes[key], **patch)
 
-    business = dict(shop.business)
+    # deep-copy business/capp before mutating nested structures so the
+    # lru-cached base shop is never corrupted.
+    business = copy.deepcopy(shop.business) if overrides.get("business") else shop.business
     for _key, fields in (overrides.get("business") or {}).items():
         for f, v in fields.items():
-            if f in _BUSINESS_OVERRIDABLE:
-                business[f] = float(v)
+            if business_field_ok(f):
+                _set_business(business, f, float(v))
+
+    capp = copy.deepcopy(shop.capp) if overrides.get("capp") else shop.capp
+    for _key, fields in (overrides.get("capp") or {}).items():
+        for f, v in fields.items():
+            if f in _CAPP_OVERRIDABLE:
+                capp[f] = float(v)
 
     return replace(shop, materials=materials, machines=machines,
-                   finishes=finishes, business=business)
+                   finishes=finishes, business=business, capp=capp)

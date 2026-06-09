@@ -48,8 +48,26 @@ class ToolpathUnavailable(RuntimeError):
     """trimesh/shapely missing, or no mesh supplied."""
 
 
+# Per-material feeds/speeds an operator may maintain at runtime.
+_CUTTING_OVERRIDABLE = {
+    "vc_rough", "fz_rough", "vc_finish", "fz_finish", "rough_stepdown_mm",
+    "finish_stepdown_mm", "vc_drill", "fz_drill", "tap_feed_mm_min",
+}
+
+
 def _load_cutting() -> dict:
-    return json.loads(_CUTTING_PATH.read_text("utf-8"))
+    cut = json.loads(_CUTTING_PATH.read_text("utf-8"))
+    # apply any runtime feeds/speeds overrides (kind="cutting", key=material)
+    try:
+        from .. import store
+        for mat, fields in (store.get_overrides().get("cutting") or {}).items():
+            if mat in cut.get("materials", {}):
+                for f, v in fields.items():
+                    if f in _CUTTING_OVERRIDABLE:
+                        cut["materials"][mat][f] = float(v)
+    except Exception:
+        pass
+    return cut
 
 
 def _mat_cut(cutting: dict, key: str) -> dict:
