@@ -51,6 +51,44 @@ def _mat_cut(cutting: dict, key: str) -> dict:
     return cutting["materials"].get(key, cutting["default"])
 
 
+def _feed(vc_m_min: float, fz_mm: float, dia_mm: float, teeth: int) -> float:
+    """Table feed (mm/min) = fz × teeth × RPM, RPM = Vc·1000/(π·D)."""
+    rpm = vc_m_min * 1000.0 / (math.pi * max(dia_mm, 0.1))
+    return fz_mm * teeth * rpm
+
+
+def _drill_feed(raw: dict, hole_dia_mm: float) -> float:
+    """Drill feed (mm/min) for a given hole — smaller drills spin faster."""
+    rpm = raw["vc_drill"] * 1000.0 / (math.pi * max(hole_dia_mm, 0.5))
+    return raw["fz_drill"] * rpm
+
+
+def _derive(cutting: dict, key: str) -> tuple[dict, dict]:
+    """Turn Vc/fz handbook data + tool geometry into the feeds/dims the
+    simulators consume. Feeds respond to the actual tool diameter."""
+    raw = _mat_cut(cutting, key)
+    t = cutting["tools"]
+    Dr, zr = t["rough"]["diameter_mm"], t["rough"]["teeth"]
+    Df, zf = t["finish"]["diameter_mm"], t["finish"]["teeth"]
+    rough_feed = _feed(raw["vc_rough"], raw["fz_rough"], Dr, zr)
+    finish_feed = _feed(raw["vc_finish"], raw["fz_finish"], Df, zf)
+    cut = {
+        "rough_feed_mm_min": rough_feed,
+        "finish_feed_mm_min": finish_feed,
+        "rough_stepdown_mm": raw["rough_stepdown_mm"],
+        "finish_stepdown_mm": raw["finish_stepdown_mm"],
+        "plunge_feed_mm_min": rough_feed * t.get("plunge_feed_frac", 0.35),
+        "tap_feed_mm_min": raw["tap_feed_mm_min"],
+        "vc_drill": raw["vc_drill"], "fz_drill": raw["fz_drill"],
+    }
+    tools = {
+        "rough_endmill_d_mm": Dr, "rough_stepover_frac": t["rough"]["stepover_frac"],
+        "finish_endmill_d_mm": Df, "finish_stepover_mm": t["finish"]["stepover_mm"],
+        "rapid_mm_min": t["rapid_mm_min"], "retract_mm": t["retract_mm"],
+    }
+    return cut, tools
+
+
 # --------------------------------------------------------------------------
 def _section_polys(mesh, z):
     """Return a shapely geometry of the part's solid cross-section at height z.
@@ -210,13 +248,13 @@ def _simulate_finishing(mesh, bounds, cut, tools) -> tuple[float, dict]:
 
 
 def _simulate_drilling(feat: FeatureSet, cut: dict) -> tuple[float, float, dict]:
-    drill_feed = cut["drill_feed_mm_min"]
     tap_feed = cut["tap_feed_mm_min"]
     drill_min = 0.0
     tap_min = 0.0
     total_depth = 0.0
     for h in feat.holes:
-        # peck cycle: drill in at drill_feed, retract on each peck (~3×dia depth).
+        # diameter-aware drill feed (smaller drills spin faster), peck cycle.
+        drill_feed = _drill_feed(cut, h.diameter_mm)
         peck = max(1, math.ceil(h.depth_mm / max(3.0 * h.diameter_mm, 1e-3)))
         in_time = h.depth_mm / drill_feed
         retract_time = peck * (h.depth_mm / peck) / (cut["plunge_feed_mm_min"]) * 0.4
@@ -292,8 +330,7 @@ def plan_toolpath(
 
     base = _analytic.plan(feat, material, shop, machine_key=machine_key)
     cutting = cutting or _load_cutting()
-    cut = _mat_cut(cutting, material.key)
-    tools = cutting["tools"]
+    cut, tools = _derive(cutting, material.key)
     margin = shop.capp["stock_margin_mm"]
     bounds = mesh.bounds  # ((x0,y0,z0),(x1,y1,z1)) in world coords
 

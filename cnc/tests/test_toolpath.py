@@ -79,6 +79,27 @@ def test_make_plan_falls_back_without_mesh():
     assert info["used"] == "analytic"
 
 
+def test_feeds_scale_with_tool_diameter():
+    from cnc.estimators.toolpath import _drill_feed, _feed, _load_cutting
+    # same Vc/fz, smaller cutter → higher table feed (spins faster)
+    assert _feed(300, 0.06, 5, 4) > _feed(300, 0.06, 10, 4)
+    raw = _load_cutting()["materials"]["AL6061"]
+    assert _drill_feed(raw, 2.0) > _drill_feed(raw, 12.0)   # small drill faster
+
+
+def test_diameter_aware_drilling_in_quote():
+    shop = load()
+    feat_small = analyze(metrics_from_stl_bytes(cube_stl(60.0)),
+                         holes=[Hole(diameter_mm=3.0, depth_mm=15.0, count=4)])
+    feat_big = analyze(metrics_from_stl_bytes(cube_stl(60.0)),
+                       holes=[Hole(diameter_mm=12.0, depth_mm=15.0, count=4)])
+    mesh = _mesh(60.0)
+    small = tp.plan_toolpath(feat_small, shop.material("AL6061"), shop, mesh)
+    big = tp.plan_toolpath(feat_big, shop.material("AL6061"), shop, mesh)
+    # same depth, small drills run faster → less drilling time
+    assert small.times.drilling_min < big.times.drilling_min
+
+
 def test_oversized_part_falls_back_fast():
     """Perf guard: a part bigger than the inline-sim cap must fall back to
     analytic (found by fuzzing — a 10m inch-misread part took 25s otherwise)."""
