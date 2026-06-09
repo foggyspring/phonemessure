@@ -673,7 +673,9 @@ def build_app() -> FastAPI:
     @app.get("/api/admin/config")
     def admin_config(_admin: dict = Depends(require_admin)) -> dict:
         """Everything an operator can maintain at runtime (with overrides applied)."""
-        from .engine.shopdata import _BUSINESS_NESTED, _BUSINESS_OVERRIDABLE, _CAPP_OVERRIDABLE
+        from .engine.shopdata import (
+            _BUSINESS_NESTED, _BUSINESS_OVERRIDABLE, _CAPP_OVERRIDABLE, _OVERRIDE_FIELDS,
+        )
         from .estimators.toolpath import _CUTTING_OVERRIDABLE, _load_cutting
         shop, _ = _effective_shop()
         biz = shop.business
@@ -683,12 +685,14 @@ def build_app() -> FastAPI:
                  for arr, subs in _BUSINESS_NESTED.items()}
         cut = _load_cutting()
         return {
-            "materials": {k: {"label": m.label, "price_cny_per_kg": m.price_cny_per_kg}
+            "materials": {k: {"label": m.label,
+                              **{f: getattr(m, f) for f in sorted(_OVERRIDE_FIELDS["material"])}}
                           for k, m in shop.materials.items()},
-            "machines": {k: {"label": mc.label, "rate_cny_per_hour": mc.rate_cny_per_hour}
+            "machines": {k: {"label": mc.label,
+                             **{f: getattr(mc, f) for f in sorted(_OVERRIDE_FIELDS["machine"])}}
                          for k, mc in shop.machines.items()},
-            "finishes": {k: {"label": fn.label, "setup_cny": fn.setup_cny,
-                             "per_dm2_cny": fn.per_dm2_cny, "min_cny": fn.min_cny}
+            "finishes": {k: {"label": fn.label,
+                             **{f: getattr(fn, f) for f in sorted(_OVERRIDE_FIELDS["finish"])}}
                          for k, fn in shop.finishes.items() if k != "none"},
             "business": {f: biz.get(f) for f in sorted(_BUSINESS_OVERRIDABLE) if biz.get(f) is not None},
             "tiers": tiers,

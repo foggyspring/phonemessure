@@ -997,7 +997,18 @@ const BIZ_LABELS = {
   margin: "利润率", tax_rate: "增值税率", tight_tolerance_margin_bonus: "精密公差溢价",
   rush_factor: "加急系数", deburr_base_cny: "去毛刺起步 ¥", deburr_per_dm2_cny: "去毛刺 ¥/dm²",
   packaging_cny: "包装费 ¥", shipping_cny_per_kg: "运费 ¥/kg", min_order_cny: "最小起订 ¥",
-  quote_valid_days: "报价有效期(天)",
+  quote_valid_days: "报价有效期(天)", daily_capacity_hours: "日产能(机时/天)",
+  tool_wear_cny_per_hour: "刀具消耗 ¥/h", crate_threshold_kg: "木箱阈值(kg)", crate_cny: "木箱费 ¥",
+};
+// Friendly labels + edit step for the per-material/finish/machine fields.
+const FIELD_META = {
+  price_cny_per_kg: ["料价 ¥/kg", 0.5], machinability: ["可加工性", 0.05],
+  density_g_cm3: ["密度 g/cm³", 0.01], form_factor: ["毛坯系数", 0.05],
+  scrap_credit_frac: ["废料抵扣率", 0.05], tensile_mpa: ["抗拉强度 MPa", 5],
+  stock_lead_days: ["备料周期(天)", 1], rate_cny_per_hour: ["时租 ¥/h", 5],
+  base_mrr_cm3_min: ["基础 MRR", 1], max_axes: ["最大轴数", 1],
+  setup_cny: ["起步 ¥", 1], per_dm2_cny: ["¥/dm²", 0.5], min_cny: ["保底 ¥", 1],
+  lead_days: ["外协周期(天)", 1],
 };
 
 function adminRow(grid, label, kind, key, field, value, step) {
@@ -1015,18 +1026,23 @@ async function openAdmin() {
     if (r.status === 401 || r.status === 403) { logout(); openLogin(); return; }
     cfg = await r.json();
   } catch { toast("加载配置失败", "err"); return; }
-  const mg = $("admin-materials"); mg.innerHTML = "";
-  for (const [k, m] of Object.entries(cfg.materials))
-    adminRow(mg, m.label, "material", k, "price_cny_per_kg", m.price_cny_per_kg, 0.5);
-  const cg = $("admin-machines"); cg.innerHTML = "";
-  for (const [k, mc] of Object.entries(cfg.machines))
-    adminRow(cg, mc.label, "machine", k, "rate_cny_per_hour", mc.rate_cny_per_hour, 5);
-  const fg = $("admin-finishes"); fg.innerHTML = "";
-  for (const [k, fn] of Object.entries(cfg.finishes || {})) {
-    adminRow(fg, fn.label + " 起步", "finish", k, "setup_cny", fn.setup_cny, 1);
-    adminRow(fg, fn.label + " /dm²", "finish", k, "per_dm2_cny", fn.per_dm2_cny, 0.5);
-    adminRow(fg, fn.label + " 保底", "finish", k, "min_cny", fn.min_cny, 1);
-  }
+  // Render every overridable field the config returns (label excluded), so the
+  // panel always reflects the full maintainable set without UI edits.
+  const fieldRows = (grid, kind, entries, shortLabel) => {
+    grid.innerHTML = "";
+    for (const [k, obj] of Object.entries(entries || {})) {
+      const name = shortLabel ? obj.label.split(" ")[0] : obj.label;
+      for (const [field, val] of Object.entries(obj)) {
+        if (field === "label" || val == null) continue;
+        const [fl, step] = FIELD_META[field] || [field, 0.5];
+        adminRow(grid, `${name} · ${fl}`, kind, k, field, val, step);
+      }
+    }
+  };
+  fieldRows($("admin-materials"), "material", cfg.materials, true);
+  fieldRows($("admin-machines"), "machine", cfg.machines, false);
+  const finishes = Object.fromEntries(Object.entries(cfg.finishes || {}));
+  fieldRows($("admin-finishes"), "finish", finishes, true);
   const bg = $("admin-business"); bg.innerHTML = "";
   for (const [k, v] of Object.entries(cfg.business || {}))
     adminRow(bg, BIZ_LABELS[k] || k, "business", "", k, v, k.includes("rate") || k === "margin" ? 0.01 : 1);

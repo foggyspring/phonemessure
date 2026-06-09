@@ -159,6 +159,19 @@ def test_price_revert_undoes_override(client):
     assert client.request("DELETE", "/api/admin/price", json={"scope": "all"}).status_code == 401
 
 
+def test_admin_config_exposes_full_maintainable_field_set(client):
+    # every whitelisted field must be visible in the config so the panel can edit it
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    cfg = client.get("/api/admin/config", headers=h).json()
+    al = cfg["materials"]["AL6061"]
+    assert {"tensile_mpa", "stock_lead_days", "machinability"} <= set(al)
+    assert "lead_days" in cfg["finishes"]["anodize_clear"]
+    assert "max_axes" in cfg["machines"]["mill_3axis"]
+    for biz_field in ("daily_capacity_hours", "tool_wear_cny_per_hour", "crate_cny"):
+        assert biz_field in cfg["business"]
+    assert "inspection_min_per_feature" in cfg["capp"]
+
+
 def test_admin_config_and_business_finish_overrides(client):
     h = {"Authorization": f"Bearer {_token(client)}"}
     cfg = client.get("/api/admin/config", headers=h).json()
