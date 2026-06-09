@@ -221,6 +221,19 @@ def test_tax_and_validity_present():
     assert q["geometry"]["part_weight_g"] > 0
 
 
+def test_inspection_scales_with_feature_count_when_precise():
+    m = _metrics()
+    few = build_quote(m, QuoteRequest(material="AL6061", quantity=5, tolerance="precision",
+                                      holes=[Hole(diameter_mm=6.0, depth_mm=15.0, count=2)]))
+    many = build_quote(m, QuoteRequest(material="AL6061", quantity=5, tolerance="precision",
+                                       holes=[Hole(diameter_mm=6.0, depth_mm=15.0, count=30)]))
+    assert many["plan"]["times"]["inspection_min"] > few["plan"]["times"]["inspection_min"]
+    # standard class is not feature-scaled (no full gauging)
+    std = build_quote(m, QuoteRequest(material="AL6061", quantity=5, tolerance="standard",
+                                      holes=[Hole(diameter_mm=6.0, depth_mm=15.0, count=30)]))
+    assert std["plan"]["times"]["inspection_min"] == 0.0
+
+
 def test_tolerance_classes_scale_price_and_inspection():
     m = _metrics()
     std = build_quote(m, QuoteRequest(material="AL6061", quantity=5, tolerance="standard"))

@@ -249,6 +249,17 @@ def plan(
     else:
         inspection_min = capp["tight_tolerance_inspection_min_per_part"] if feat.tight_tolerance else 0.0
         tol_factor = capp["tight_tolerance_machining_factor"] if feat.tight_tolerance else 1.0
+    # Inspection scales with the number of controlled features (holes/bores):
+    # a CMM probes each feature, so a 30-hole precision part inspects far longer
+    # than a 2-hole one at the same class. Only applies when the class actually
+    # demands inspection (baseline > 0); standard parts aren't fully gauged.
+    if inspection_min > 0:
+        per_feature = capp.get("inspection_min_per_feature", 0.3)
+        n_features = sum(h.count for h in feat.holes)
+        if n_features:
+            extra = per_feature * n_features
+            inspection_min += extra
+            notes.append(f"检测随特征数叠加：{n_features} 处 × {per_feature:g}min = {extra:.1f}min")
     if tol_factor != 1.0:
         roughing_min *= tol_factor
         finishing_min *= tol_factor
