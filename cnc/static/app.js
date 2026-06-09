@@ -485,7 +485,7 @@ function renderResult(p, isLive) {
   $("bignum-sub").innerHTML =
     `× ${r.quantity} 件 · 净额 ${money(q.net_total_cny != null ? q.net_total_cny : r.line_total_cny, cur)}` +
     ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
-    ` · 交期 ${q.lead_days} 天${valid}`;
+    ` · 交期 ${q.lead_days} 天${q.delivery_date ? `（约 ${q.delivery_date} 交付）` : ""}${valid}`;
   renderConfidence(p);
   renderLogistics(p);
   renderCompare(p);
@@ -797,7 +797,7 @@ function renderLeadOptions(q, isLive) {
     `<div class="lead-chips">` + opts.map((o) =>
       `<button class="lead-chip${o.selected ? " on" : ""}" data-lead="${esc(o.key)}"${isLive ? " disabled" : ""}>
          <span class="lead-name">${esc(o.label)}</span>
-         <span class="lead-days">${o.days} 天</span>
+         <span class="lead-days">${o.days} 天${o.delivery_date ? ` · ${o.delivery_date}` : ""}</span>
          <span class="lead-price">${money(o.unit_price_cny, q.currency)}/件</span>
        </button>`).join("") + `</div>`;
   el.querySelectorAll(".lead-chip").forEach((b) => b.addEventListener("click", () => {

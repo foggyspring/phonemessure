@@ -77,6 +77,24 @@ def _ensure_font() -> None:
     _font_ready = True
 
 
+def _stable_quote_no(payload: dict) -> str:
+    """Deterministic quote number for the same inputs.
+
+    Python's built-in hash() is salted per process (PYTHONHASHSEED), so the same
+    quote produced a different number on every server restart. Use a stable
+    digest of the price-determining inputs instead.
+    """
+    import hashlib
+    inp = payload.get("input", {})
+    geo = payload.get("geometry", {})
+    req = payload.get("quote", {}).get("requested", {})
+    key = "|".join(str(x) for x in (
+        inp.get("material_label"), inp.get("finish_label"), inp.get("tight_tolerance"),
+        req.get("quantity"), geo.get("volume_cm3"), geo.get("dims_mm")))
+    digest = int(hashlib.sha1(key.encode("utf-8")).hexdigest(), 16) % 10000
+    return f"Q{date.today():%Y%m%d}-{digest:04d}"
+
+
 def _money(v: float, cur: str = "CNY") -> str:
     sym = "¥" if cur == "CNY" else cur + " "
     return f"{sym}{v:,.2f}"
@@ -115,12 +133,13 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
 
     flow = []
     flow.append(Paragraph("CNC 加工报价单 · CNC Machining Quotation", h1))
-    quote_no = quote_no or f"Q{date.today():%Y%m%d}-{abs(hash(str(payload))) % 10000:04d}"
+    quote_no = quote_no or _stable_quote_no(payload)
     valid_until = quote.get("valid_until")
     meta = Table(
         [
             ["报价单号 Quote No.", quote_no, "日期 Date", f"{date.today():%Y-%m-%d}"],
-            ["零件 Part", inp.get("part_name", "—"), "交期 Lead", f"{quote['lead_days']} 天"],
+            ["零件 Part", inp.get("part_name", "—"), "交期 Lead",
+             f"{quote['lead_days']} 天" + (f" · {quote['delivery_date']}" if quote.get("delivery_date") else "")],
             ["客户 Customer", inp.get("customer") or "—", "有效期 Valid until",
              valid_until or "—"],
         ],

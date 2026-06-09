@@ -74,12 +74,14 @@ class Quote:
         tax = net * self.tax_rate
         valid_until = (date.today() + timedelta(days=self.valid_days)).isoformat() \
             if self.valid_days else None
+        delivery_date = (date.today() + timedelta(days=self.lead_days)).isoformat()
         return {
             "requested": self.requested.to_dict(),
             "tiers": [t.to_dict() for t in self.tiers],
             "one_time_cny": round(self.one_time_cny, 2),
             "finish_setup_cny": round(self.finish_setup_cny, 2),
             "lead_days": self.lead_days,
+            "delivery_date": delivery_date,
             "rush": self.rush,
             "lead_time": self.lead_time,
             "lead_time_options": self.lead_time_options,
@@ -244,11 +246,13 @@ def price(
     one_time_total = order_one_time(rq)
 
     # Each delivery option's price at the requested quantity (for side-by-side UI).
+    from datetime import date as _date, timedelta as _td
     lead_time_options = []
     for t in tier_cfg:
         u = make(rq, float(t["factor"])).unit_price_cny
         lead_time_options.append({
             "key": t["key"], "label": t["label"], "days": int(t["days"]),
+            "delivery_date": (_date.today() + _td(days=int(t["days"]))).isoformat(),
             "factor": float(t["factor"]), "unit_price_cny": round(u, 2),
             "total_cny": round(u * rq, 2), "selected": t["key"] == sel["key"],
         })
