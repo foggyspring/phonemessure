@@ -32,9 +32,11 @@ def test_set_price_request_pends_not_executes():
     assert not any(a["tool"] == "set_price" for a in out["actions"])   # not executed
 
 
-def test_non_admin_write_pends_with_admin_note():
+def test_non_admin_cannot_invoke_write():
+    # write tools aren't offered to non-admins, so the AI can't propose one
     out = run_agent("把 AL6061 改价到 42", _ctx(admin=False))
-    assert out["pending"] and "管理员" in out["reply"]
+    assert out["pending"] is None
+    assert "管理员" in out["reply"]      # help text points to admin
 
 
 # ---- approve endpoint ----
