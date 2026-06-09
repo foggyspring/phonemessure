@@ -131,6 +131,11 @@ def plan(
     stock = Stock(dx + 2 * margin, dy + 2 * margin, dz + 2 * margin, margin)
     stock_cm3 = stock.volume_mm3 / 1000.0
     part_cm3 = feat.metrics.volume_mm3 / 1000.0
+    # A part cannot out-volume its own stock; if it does, the mesh is bad
+    # (non-watertight / duplicated faces / wrong winding inflate the volume).
+    if part_cm3 > stock_cm3:
+        notes.append("零件体积≥毛坯：图纸可能非封闭或含重复面，体积已按毛坯封顶，请核对模型")
+        part_cm3 = stock_cm3
     removed_cm3 = max(stock_cm3 - part_cm3, 0.0)
 
     # ---- Complexity multiplier (freeform / 5-axis / thin wall / tolerance) ----

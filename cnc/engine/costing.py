@@ -34,8 +34,14 @@ class CostBreakdown:
     line_total_cny: float
 
     def to_dict(self) -> dict:
-        return {k: (round(v, 2) if isinstance(v, float) else v)
-                for k, v in asdict(self).items()}
+        d = {k: (round(v, 2) if isinstance(v, float) else v)
+             for k, v in asdict(self).items()}
+        # Reconcile the *displayed* figures: total must equal the rounded unit
+        # price × quantity, so a customer can check unit×qty == total by hand
+        # (otherwise sub-cent rounding makes them disagree at large quantities).
+        d["unit_price_cny"] = round(self.unit_price_cny, 2)
+        d["line_total_cny"] = round(d["unit_price_cny"] * self.quantity, 2)
+        return d
 
 
 @dataclass
