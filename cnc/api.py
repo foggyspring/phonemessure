@@ -196,6 +196,44 @@ def build_app() -> FastAPI:
                 "note": ("使用离线模拟助手；上线接入真实 LLM 后自动切换。"
                          if p.name == "mock" else "已接入真实 LLM。")}
 
+    @app.post("/api/ai/chat")
+    async def ai_chat(
+        message: str = Form(...),
+        params: str = Form("{}"),
+        history: str = Form("[]"),
+        file: UploadFile | None = File(None),
+        authorization: str | None = Header(default=None),
+    ) -> JSONResponse:
+        from .ai.agent import run_agent
+        from .ai.tools import AgentContext
+        try:
+            p = json.loads(params) if params else {}
+            hist = json.loads(history) if history else []
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"bad params/history: {exc}") from exc
+        if not isinstance(p, dict) or not isinstance(hist, list):
+            raise HTTPException(status_code=400, detail="params must be object, history a list")
+
+        metrics = mesh_stl = None
+        if file is not None:
+            data = _read_capped(file)
+            try:
+                metrics, extra = _metrics_from_request(data, file.filename, None)
+                if extra.get("preview_stl_b64"):
+                    mesh_stl = base64.b64decode(extra["preview_stl_b64"])
+                elif file.filename and file.filename.lower().endswith(".stl"):
+                    mesh_stl = data
+            except (GeometryError, KernelUnavailable):
+                metrics = None
+
+        tok = auth.bearer_from_header(authorization)
+        is_admin = bool(tok and auth.verify_token(store.get_secret(), tok))
+        shop, sources = _effective_shop()
+        ctx = AgentContext(shop=shop, metrics=metrics, mesh_stl=mesh_stl, params=p,
+                           price_sources=sources, calibration_factors=store.time_factors(),
+                           is_admin=is_admin)
+        return JSONResponse(run_agent(str(message), ctx, history=hist))
+
     @app.get("/api/prices")
     def prices() -> dict:
         """Current effective material ¥/kg and where each came from."""
