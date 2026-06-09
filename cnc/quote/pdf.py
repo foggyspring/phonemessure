@@ -177,9 +177,16 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
 
     # ---- Cost breakdown (per unit) ----
     flow.append(Paragraph("<b>成本构成 Cost breakdown (单件 per unit)</b>", body))
-    cb_rows = [
-        ["项目 Item", "金额 Amount"],
-        ["材料费 Material", _money(req["material_cny"], cur)],
+    cb_rows = [["项目 Item", "金额 Amount"]]
+    if quote.get("scrap_credit_cny", 0) > 0:
+        cb_rows += [
+            ["材料毛重 Material gross", _money(quote["material_gross_cny"], cur)],
+            ["废料抵扣 Scrap credit", "−" + _money(quote["scrap_credit_cny"], cur)],
+            ["材料净费 Material net", _money(req["material_cny"], cur)],
+        ]
+    else:
+        cb_rows.append(["材料费 Material", _money(req["material_cny"], cur)])
+    cb_rows += [
         ["加工费 Machining", _money(req["machining_cny"], cur)],
         ["表面处理 Finishing", _money(req["finish_variable_cny"], cur)],
         ["编程/准备摊销 Setup (amortized)", _money(req["amortized_one_time_cny"], cur)],

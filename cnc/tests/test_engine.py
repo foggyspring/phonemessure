@@ -30,6 +30,23 @@ def test_removed_volume_drives_material():
     assert abs(q["plan"]["part_volume_cm3"] - 125.0) < 0.01
 
 
+def test_scrap_credit_reduces_material_cost():
+    import trimesh
+
+    from cnc.geometry import metrics_from_stl_bytes
+    m = trimesh.creation.cylinder(radius=20, height=40, sections=48)
+    m.apply_translation((0, 0, 20))
+    sb = m.export(file_type="stl")          # removes a lot of metal → real chips
+
+    ti = build_quote(metrics_from_stl_bytes(sb), QuoteRequest(material="TITANIUM_TC4", quantity=1))
+    Q = ti["quote"]
+    assert Q["scrap_credit_cny"] > 0
+    assert abs(Q["requested"]["material_cny"] - (Q["material_gross_cny"] - Q["scrap_credit_cny"])) < 0.05
+    # plastics get no scrap credit
+    pom = build_quote(metrics_from_stl_bytes(sb), QuoteRequest(material="POM", quantity=1))
+    assert pom["quote"]["scrap_credit_cny"] == 0.0
+
+
 def test_standard_plate_thickness_rounding():
     # a 17mm-thick plate must be quoted on 20mm stock (next standard plate),
     # and the note should say so.

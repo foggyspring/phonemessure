@@ -26,6 +26,7 @@ class Material:
     finish_ok: tuple[str, ...]
     metal_basis: str | None = None   # exchange metal for live pricing (AL/CU/SS/…)
     form_factor: float = 0.0         # spot → finished bar/plate multiplier
+    scrap_credit_frac: float = 0.0   # fraction of removed-metal value recovered
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,7 @@ def load(data_dir: str | None = None) -> ShopData:
             finish_ok=tuple(v["finish_ok"]),
             metal_basis=v.get("metal_basis"),
             form_factor=float(v.get("form_factor", 0.0)),
+            scrap_credit_frac=float(v.get("scrap_credit_frac", 0.0)),
         )
         for k, v in mats_raw["materials"].items()
     }

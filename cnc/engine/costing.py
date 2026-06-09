@@ -58,6 +58,8 @@ class Quote:
     tax_rate: float = 0.0
     tax_label: str = ""
     valid_days: int = 0
+    material_gross_cny: float = 0.0
+    scrap_credit_cny: float = 0.0
 
     def to_dict(self) -> dict:
         # Tax is charged on the requested line total; the grand total is what
@@ -84,14 +86,24 @@ class Quote:
             "total_incl_tax_cny": round(net + tax, 2),
             "valid_days": self.valid_days,
             "valid_until": valid_until,
+            "material_gross_cny": round(self.material_gross_cny, 2),
+            "scrap_credit_cny": round(self.scrap_credit_cny, 2),
             "notes": self.notes,
         }
 
 
-def _material_cost(plan: ProcessPlan, material: Material) -> float:
-    # stock volume (cm^3) * density (g/cm^3) = grams; /1000 -> kg; * price/kg.
-    grams = plan.stock_volume_cm3 * material.density_g_cm3
-    return (grams / 1000.0) * material.price_cny_per_kg
+def _material_cost(plan: ProcessPlan, material: Material) -> tuple[float, float, float]:
+    """Return (net, gross, scrap_credit) per part in CNY.
+
+    Gross = stock weight × price. The removed metal (chips) is credited back at
+    scrap_credit_frac of its value — material for expensive alloys (titanium /
+    stainless chips have real recovery value), negligible for plastics.
+    """
+    price = material.price_cny_per_kg
+    gross = (plan.stock_volume_cm3 * material.density_g_cm3 / 1000.0) * price
+    removed_kg = plan.removed_volume_cm3 * material.density_g_cm3 / 1000.0
+    credit = removed_kg * price * material.scrap_credit_frac
+    return gross - credit, gross, credit
 
 
 def _machining_cost(plan: ProcessPlan) -> float:
@@ -140,7 +152,7 @@ def price(
         notes.append("精密公差：风险溢价提高利润率")
 
     # Per-part variable costs.
-    material_cny = _material_cost(plan, material)
+    material_cny, material_gross_cny, scrap_credit_cny = _material_cost(plan, material)
     machining_cny = _machining_cost(plan)
 
     # Surface treatment is priced on the part's real surface area (cm^2 -> dm^2).
@@ -202,4 +214,6 @@ def price(
         tax_rate=float(biz.get("tax_rate", 0.0)),
         tax_label=str(biz.get("tax_label", "")),
         valid_days=int(biz.get("quote_valid_days", 0)),
+        material_gross_cny=material_gross_cny,
+        scrap_credit_cny=scrap_credit_cny,
     )

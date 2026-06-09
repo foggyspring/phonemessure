@@ -7,6 +7,7 @@
       "density_g_cm3": 2.7,
       "price_cny_per_kg": 35.0,
       "machinability": 1.0,
+      "scrap_credit_frac": 0.25,
       "metal_basis": "AL",
       "form_factor": 1.75,
       "finish_ok": [
@@ -23,6 +24,7 @@
       "density_g_cm3": 2.81,
       "price_cny_per_kg": 62.0,
       "machinability": 1.25,
+      "scrap_credit_frac": 0.25,
       "metal_basis": "AL",
       "form_factor": 3.1,
       "finish_ok": [
@@ -39,6 +41,7 @@
       "density_g_cm3": 7.93,
       "price_cny_per_kg": 28.0,
       "machinability": 2.5,
+      "scrap_credit_frac": 0.3,
       "metal_basis": "SS",
       "form_factor": 2.0,
       "finish_ok": [
@@ -54,6 +57,7 @@
       "density_g_cm3": 7.98,
       "price_cny_per_kg": 46.0,
       "machinability": 2.8,
+      "scrap_credit_frac": 0.3,
       "metal_basis": "SS",
       "form_factor": 3.3,
       "finish_ok": [
@@ -69,6 +73,7 @@
       "density_g_cm3": 8.49,
       "price_cny_per_kg": 70.0,
       "machinability": 0.8,
+      "scrap_credit_frac": 0.4,
       "metal_basis": "CU",
       "form_factor": 0.93,
       "finish_ok": [
@@ -82,6 +87,7 @@
       "density_g_cm3": 8.96,
       "price_cny_per_kg": 86.0,
       "machinability": 1.4,
+      "scrap_credit_frac": 0.45,
       "metal_basis": "CU",
       "form_factor": 1.15,
       "finish_ok": [
@@ -95,6 +101,7 @@
       "density_g_cm3": 4.43,
       "price_cny_per_kg": 380.0,
       "machinability": 4.0,
+      "scrap_credit_frac": 0.35,
       "finish_ok": [
         "none",
         "bead_blast",
@@ -107,6 +114,7 @@
       "density_g_cm3": 1.41,
       "price_cny_per_kg": 32.0,
       "machinability": 0.6,
+      "scrap_credit_frac": 0.0,
       "finish_ok": [
         "none",
         "bead_blast"
@@ -118,6 +126,7 @@
       "density_g_cm3": 1.05,
       "price_cny_per_kg": 26.0,
       "machinability": 0.5,
+      "scrap_credit_frac": 0.0,
       "finish_ok": [
         "none"
       ]
@@ -128,6 +137,7 @@
       "density_g_cm3": 1.14,
       "price_cny_per_kg": 30.0,
       "machinability": 0.6,
+      "scrap_credit_frac": 0.0,
       "finish_ok": [
         "none",
         "bead_blast"

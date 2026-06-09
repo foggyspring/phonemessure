@@ -471,11 +471,15 @@ function renderResult(p, isLive) {
     ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
     ` · 交期 ${q.lead_days} 天${q.rush ? " 加急" : ""}${valid}`;
   const psrc = p.input?.price_source;
-  const matLabel = psrc && psrc !== "static"
-    ? `材料费 Material <span class="muted tiny">(${psrc === "manual override" ? "改价" : psrc.split(" ")[0]})</span>`
-    : "材料费 Material";
+  const srcTag = psrc && psrc !== "static"
+    ? ` <span class="muted tiny">(${psrc === "manual override" ? "改价" : psrc.split(" ")[0]})</span>` : "";
+  const matRows = q.scrap_credit_cny > 0
+    ? [[`材料毛重 Material${srcTag}`, money(q.material_gross_cny, cur)],
+       ["废料抵扣 Scrap credit", "−" + money(q.scrap_credit_cny, cur)],
+       ["材料净费 Material net", money(r.material_cny, cur)]]
+    : [[`材料费 Material${srcTag}`, money(r.material_cny, cur)]];
   $("cost-table").innerHTML = kv([
-    [matLabel, money(r.material_cny, cur)],
+    ...matRows,
     ["加工费 Machining", money(r.machining_cny, cur)],
     ["表面处理 Finishing", money(r.finish_variable_cny, cur)],
     ["编程摊销 Setup/ea", money(r.amortized_one_time_cny, cur)],
