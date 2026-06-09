@@ -169,37 +169,43 @@
       "label": "无 (As-machined)",
       "setup_cny": 0.0,
       "per_dm2_cny": 0.0,
-      "min_cny": 0.0
+      "min_cny": 0.0,
+      "lead_days": 0
     },
     "bead_blast": {
       "label": "喷砂 (Bead blast)",
       "setup_cny": 30.0,
       "per_dm2_cny": 8.0,
-      "min_cny": 40.0
+      "min_cny": 40.0,
+      "lead_days": 1
     },
     "anodize_clear": {
       "label": "本色阳极氧化 (Clear anodize)",
       "setup_cny": 50.0,
       "per_dm2_cny": 15.0,
-      "min_cny": 60.0
+      "min_cny": 60.0,
+      "lead_days": 3
     },
     "anodize_color": {
       "label": "彩色阳极氧化 (Color anodize)",
       "setup_cny": 60.0,
       "per_dm2_cny": 20.0,
-      "min_cny": 75.0
+      "min_cny": 75.0,
+      "lead_days": 3
     },
     "powder_coat": {
       "label": "喷粉 (Powder coat)",
       "setup_cny": 40.0,
       "per_dm2_cny": 12.0,
-      "min_cny": 55.0
+      "min_cny": 55.0,
+      "lead_days": 2
     },
     "passivation": {
       "label": "钝化 (Passivation)",
       "setup_cny": 35.0,
       "per_dm2_cny": 6.0,
-      "min_cny": 45.0
+      "min_cny": 45.0,
+      "lead_days": 2
     }
   }
 }

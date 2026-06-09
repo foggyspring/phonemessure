@@ -39,6 +39,7 @@ class Finish:
     setup_cny: float
     per_dm2_cny: float
     min_cny: float
+    lead_days: int = 0               # outsourced post-process turnaround (阳极/喷粉…)
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,7 @@ def load(data_dir: str | None = None) -> ShopData:
             setup_cny=v["setup_cny"],
             per_dm2_cny=v["per_dm2_cny"],
             min_cny=v["min_cny"],
+            lead_days=int(v.get("lead_days", 0)),
         )
         for k, v in mats_raw["finishes"].items()
     }
@@ -134,7 +136,7 @@ _OVERRIDE_FIELDS = {
     "material": {"price_cny_per_kg", "machinability", "density_g_cm3",
                  "form_factor", "scrap_credit_frac", "tensile_mpa", "stock_lead_days"},
     "machine": {"rate_cny_per_hour", "base_mrr_cm3_min", "max_axes"},
-    "finish": {"setup_cny", "per_dm2_cny", "min_cny"},
+    "finish": {"setup_cny", "per_dm2_cny", "min_cny", "lead_days"},
 }
 # Business/process scalars an operator may maintain at runtime (利润率/税率/去毛刺
 # /物流/最小起订 等).

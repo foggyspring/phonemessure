@@ -243,6 +243,14 @@ def test_min_order_floor_tops_up_small_orders():
     assert big["min_order_topup_cny"] == 0.0
 
 
+def test_outsourced_finish_extends_lead_time():
+    m = _metrics()
+    raw = build_quote(m, QuoteRequest(material="AL6061", quantity=10, finish="none"))["quote"]
+    ano = build_quote(m, QuoteRequest(material="AL6061", quantity=10, finish="anodize_clear"))["quote"]
+    assert ano["lead_days"] > raw["lead_days"]      # anodizing is outsourced turnaround
+    assert any("外协后处理" in n for n in ano["notes"])
+
+
 def test_procurement_lead_extends_delivery_for_exotic_material():
     m = _metrics()
     al = build_quote(m, QuoteRequest(material="AL6061", quantity=5))["quote"]

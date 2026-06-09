@@ -254,12 +254,17 @@ def price(
     capacity_h = float(biz.get("daily_capacity_hours", 16) or 16)
     machining_days = _math.ceil(plan.times.per_part_min * rq / 60.0 / capacity_h) if capacity_h > 0 else 0
 
+    # Outsourced finishing (anodize / powder coat …) adds turnaround after cutting.
+    finish_days = int(getattr(finish, "lead_days", 0) or 0)
+
     def _lead_for(tier_days: int) -> int:
-        return max(int(tier_days), machining_days) + procure_days
+        return max(int(tier_days), machining_days) + procure_days + finish_days
 
     lead_days = _lead_for(int(sel["days"]))
     if procure_days:
         notes.append(f"{material.label} 非常备料，备料 +{procure_days} 天")
+    if finish_days:
+        notes.append(f"{finish.label} 外协后处理 +{finish_days} 天")
     if machining_days > int(sel["days"]):
         notes.append(f"大批量按产能排产，加工约 {machining_days} 天（{capacity_h:g}h/天）")
     if lead_factor != 1.0:
