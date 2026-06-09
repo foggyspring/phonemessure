@@ -99,3 +99,18 @@ def test_health_reports_dependencies():
     assert h["ok"] is True and h["db"] is True
     assert "version" in h and "ai_provider" in h and "price_feed" in h
     assert h["ai_provider"] == "mock" and h["ai_live"] is False
+
+
+def test_quote_history_pagination_and_search(tmp_path, monkeypatch):
+    monkeypatch.setenv("CNC_DB", str(tmp_path / "h.db"))
+    from cnc.api import build_app
+    cl = TestClient(build_app())
+    stl = STL
+    for mat in ["AL6061", "AL6061", "SUS304"]:
+        cl.post("/api/quote", data={"params": json.dumps({"material": mat, "quantity": 1, "finish": "none"})},
+                files={"file": ("p.stl", stl)})
+    page = cl.get("/api/quotes?limit=2&offset=0").json()
+    assert page["total"] == 3 and len(page["quotes"]) == 2 and page["limit"] == 2
+    assert len(cl.get("/api/quotes?limit=2&offset=2").json()["quotes"]) == 1
+    s = cl.get("/api/quotes?search=SUS304").json()
+    assert s["total"] == 1 and s["quotes"][0]["material"] == "SUS304"

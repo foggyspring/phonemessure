@@ -538,8 +538,9 @@ def build_app() -> FastAPI:
         )
 
     @app.get("/api/quotes")
-    def quotes(limit: int = 50) -> dict:
-        return {"quotes": store.list_quotes(limit=max(1, min(limit, 500)))}
+    def quotes(limit: int = 50, offset: int = 0, search: str = "") -> dict:
+        rows, total = store.list_quotes(limit=limit, offset=offset, search=search.strip())
+        return {"quotes": rows, "total": total, "offset": max(0, offset), "limit": limit}
 
     @app.get("/api/quotes/{quote_id}")
     def quote_by_id(quote_id: str) -> JSONResponse:

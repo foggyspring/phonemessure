@@ -152,16 +152,26 @@ def get_quote(qid: str, *, path: str | os.PathLike | None = None) -> dict | None
 
 
 def list_quotes(
-    limit: int = 50, *, path: str | os.PathLike | None = None
-) -> list[dict]:
+    limit: int = 50, *, offset: int = 0, search: str = "",
+    path: str | os.PathLike | None = None,
+) -> tuple[list[dict], int]:
+    """Return (rows, total). Optional case-insensitive search on part name /
+    material; offset/limit for pagination."""
+    cols = ("id, created_at, part_name, material, quantity, unit_price, "
+            "line_total, currency")
+    where, args = "", []
+    if search:
+        where = " WHERE part_name LIKE ? OR material LIKE ?"
+        args = [f"%{search}%", f"%{search}%"]
+    limit = max(1, min(200, int(limit)))
+    offset = max(0, int(offset))
     with _connect(path) as conn:
+        total = conn.execute(f"SELECT COUNT(*) AS n FROM quotes{where}", args).fetchone()["n"]
         rows = conn.execute(
-            "SELECT id, created_at, part_name, material, quantity, unit_price, "
-            "line_total, currency FROM quotes ORDER BY created_at DESC, rowid DESC "
-            "LIMIT ?",
-            (int(limit),),
+            f"SELECT {cols} FROM quotes{where} ORDER BY created_at DESC, rowid DESC "
+            "LIMIT ? OFFSET ?", (*args, limit, offset),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [dict(r) for r in rows], total
 
 
 # ----------------------------------------------------------- overrides ----
