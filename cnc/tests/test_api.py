@@ -82,3 +82,12 @@ def test_valid_quote_round_trip_200():
     body = r.json()
     assert body["quote"]["requested"]["unit_price_cny"] > 0
     assert "total_incl_tax_cny" in body["quote"]
+
+
+def test_db_schema_version_stamped(tmp_path):
+    import sqlite3
+    from cnc import store
+    db = tmp_path / "v.db"
+    store.count_users(path=db)                      # forces connect → migrate
+    v = sqlite3.connect(db).execute("PRAGMA user_version").fetchone()[0]
+    assert v == store._SCHEMA_VERSION

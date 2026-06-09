@@ -88,8 +88,28 @@ def _connect(path: str | os.PathLike | None = None) -> sqlite3.Connection:
     # "database is locked" under request bursts (writers wait, not fail).
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
-    conn.executescript(_SCHEMA)
+    conn.executescript(_SCHEMA)          # CREATE IF NOT EXISTS — safe to re-run
+    _migrate(conn)
     return conn
+
+
+# Schema version + ordered migrations. Bump _SCHEMA_VERSION and append an entry
+# when a column/table change can't be expressed as a plain CREATE IF NOT EXISTS
+# (e.g. ALTER TABLE / backfill), so old databases upgrade in place.
+_SCHEMA_VERSION = 1
+_MIGRATIONS: dict[int, list[str]] = {
+    # 2: ["ALTER TABLE quotes ADD COLUMN ...", ...],
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    cur = conn.execute("PRAGMA user_version").fetchone()[0]
+    if cur >= _SCHEMA_VERSION:
+        return
+    for v in range(cur + 1, _SCHEMA_VERSION + 1):
+        for stmt in _MIGRATIONS.get(v, []):
+            conn.execute(stmt)
+    conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
 
 
 def _now() -> str:
