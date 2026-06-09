@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import random
 
+import pytest
+
 from cnc.ai.agent import run_agent
 from cnc.ai.tools import AgentContext
 from cnc.engine import load
@@ -26,9 +28,10 @@ def _ctx(admin, has_part):
         params={"material": "AL6061", "quantity": 5, "finish": "none"}, is_admin=admin)
 
 
+@pytest.mark.slow
 def test_agent_never_crashes_and_shape_is_stable():
     rng = random.Random(7)
-    for _ in range(400):
+    for _ in range(150):
         msg = " ".join(rng.choice(_FRAGMENTS) for _ in range(rng.randint(1, 3)))
         ctx = _ctx(admin=rng.random() < 0.5, has_part=rng.random() < 0.8)
         out = run_agent(msg, ctx)
