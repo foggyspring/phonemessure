@@ -602,12 +602,22 @@ def build_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=f"invalid body: {exc}") from exc
 
         # Validate the key exists and the field is overridable.
+        from .engine.shopdata import _BUSINESS_OVERRIDABLE, _OVERRIDE_FIELDS
         shop = load()
-        catalog = shop.materials if kind == "material" else shop.machines if kind == "machine" else None
-        if catalog is None:
-            raise HTTPException(status_code=400, detail="kind must be 'material' or 'machine'")
-        if key not in catalog:
-            raise HTTPException(status_code=404, detail=f"unknown {kind} '{key}'")
+        if kind in ("material", "machine", "finish"):
+            catalog = {"material": shop.materials, "machine": shop.machines,
+                       "finish": shop.finishes}[kind]
+            if key not in catalog:
+                raise HTTPException(status_code=404, detail=f"unknown {kind} '{key}'")
+            if field not in _OVERRIDE_FIELDS[kind]:
+                raise HTTPException(status_code=400, detail=f"field '{field}' not overridable for {kind}")
+        elif kind == "business":
+            if field not in _BUSINESS_OVERRIDABLE:
+                raise HTTPException(status_code=400,
+                                    detail=f"field '{field}' not a maintainable business param")
+            key = key or "business"
+        else:
+            raise HTTPException(status_code=400, detail="kind must be material/machine/finish/business")
         try:
             store.set_override(kind, key, field, value)
         except ValueError as exc:
@@ -618,6 +628,23 @@ def build_app() -> FastAPI:
     @app.get("/api/admin/overrides")
     def overrides(_admin: dict = Depends(require_admin)) -> dict:
         return store.get_overrides()
+
+    @app.get("/api/admin/config")
+    def admin_config(_admin: dict = Depends(require_admin)) -> dict:
+        """Everything an operator can maintain at runtime (with overrides applied)."""
+        from .engine.shopdata import _BUSINESS_OVERRIDABLE
+        shop, _ = _effective_shop()
+        return {
+            "materials": {k: {"label": m.label, "price_cny_per_kg": m.price_cny_per_kg}
+                          for k, m in shop.materials.items()},
+            "machines": {k: {"label": mc.label, "rate_cny_per_hour": mc.rate_cny_per_hour}
+                         for k, mc in shop.machines.items()},
+            "finishes": {k: {"label": fn.label, "setup_cny": fn.setup_cny,
+                             "per_dm2_cny": fn.per_dm2_cny, "min_cny": fn.min_cny}
+                         for k, fn in shop.finishes.items() if k != "none"},
+            "business": {f: shop.business.get(f) for f in sorted(_BUSINESS_OVERRIDABLE)
+                         if shop.business.get(f) is not None},
+        }
 
     @app.delete("/api/admin/price")
     def revert_price(body: dict, _admin: dict = Depends(require_admin)) -> dict:

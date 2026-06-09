@@ -128,6 +128,14 @@ def load(data_dir: str | None = None) -> ShopData:
 _OVERRIDE_FIELDS = {
     "material": {"price_cny_per_kg", "machinability", "density_g_cm3"},
     "machine": {"rate_cny_per_hour", "base_mrr_cm3_min"},
+    "finish": {"setup_cny", "per_dm2_cny", "min_cny"},
+}
+# Business/process scalars an operator may maintain at runtime (利润率/税率/去毛刺
+# /物流/最小起订 等). Only flat numeric keys — nested tier arrays stay in JSON.
+_BUSINESS_OVERRIDABLE = {
+    "margin", "tax_rate", "tight_tolerance_margin_bonus", "rush_factor",
+    "deburr_base_cny", "deburr_per_dm2_cny", "packaging_cny",
+    "shipping_cny_per_kg", "min_order_cny", "quote_valid_days",
 }
 
 
@@ -157,4 +165,19 @@ def apply_overrides(shop: ShopData, overrides: dict | None) -> ShopData:
         if patch:
             machines[key] = replace(machines[key], **patch)
 
-    return replace(shop, materials=materials, machines=machines)
+    finishes = dict(shop.finishes)
+    for key, fields in (overrides.get("finish") or {}).items():
+        if key not in finishes:
+            continue
+        patch = {f: float(v) for f, v in fields.items() if f in _OVERRIDE_FIELDS["finish"]}
+        if patch:
+            finishes[key] = replace(finishes[key], **patch)
+
+    business = dict(shop.business)
+    for _key, fields in (overrides.get("business") or {}).items():
+        for f, v in fields.items():
+            if f in _BUSINESS_OVERRIDABLE:
+                business[f] = float(v)
+
+    return replace(shop, materials=materials, machines=machines,
+                   finishes=finishes, business=business)

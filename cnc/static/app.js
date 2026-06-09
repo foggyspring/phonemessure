@@ -960,21 +960,43 @@ function logout() {
 }
 
 // ───────────────────────── admin price modal ─────────────────────────
-function openAdmin() {
+const BIZ_LABELS = {
+  margin: "利润率", tax_rate: "增值税率", tight_tolerance_margin_bonus: "精密公差溢价",
+  rush_factor: "加急系数", deburr_base_cny: "去毛刺起步 ¥", deburr_per_dm2_cny: "去毛刺 ¥/dm²",
+  packaging_cny: "包装费 ¥", shipping_cny_per_kg: "运费 ¥/kg", min_order_cny: "最小起订 ¥",
+  quote_valid_days: "报价有效期(天)",
+};
+
+function adminRow(grid, label, kind, key, field, value, step) {
+  const d = document.createElement("div"); d.className = "admin-row";
+  d.innerHTML = `<label>${esc(label)}<input type="number" step="${step}" ` +
+    `data-kind="${kind}" data-key="${esc(key)}" data-field="${field}" value="${value}"></label>`;
+  grid.appendChild(d);
+}
+
+async function openAdmin() {
   if (!state.token) { openLogin(); return; }
-  if (!state.shop) return;
+  let cfg;
+  try {
+    const r = await fetch("/api/admin/config", { headers: authHeaders() });
+    if (r.status === 401 || r.status === 403) { logout(); openLogin(); return; }
+    cfg = await r.json();
+  } catch { toast("加载配置失败", "err"); return; }
   const mg = $("admin-materials"); mg.innerHTML = "";
-  for (const [k, m] of Object.entries(state.shop.materials)) {
-    const d = document.createElement("div"); d.className = "admin-row";
-    d.innerHTML = `<label>${m.label}<input type="number" min="0" step="0.5" data-kind="material" data-key="${k}" data-field="price_cny_per_kg" value="${m.price_cny_per_kg}"></label>`;
-    mg.appendChild(d);
-  }
+  for (const [k, m] of Object.entries(cfg.materials))
+    adminRow(mg, m.label, "material", k, "price_cny_per_kg", m.price_cny_per_kg, 0.5);
   const cg = $("admin-machines"); cg.innerHTML = "";
-  for (const [k, mc] of Object.entries(state.shop.machines)) {
-    const d = document.createElement("div"); d.className = "admin-row";
-    d.innerHTML = `<label>${mc.label}<input type="number" min="0" step="5" data-kind="machine" data-key="${k}" data-field="rate_cny_per_hour" value="${mc.rate_cny_per_hour}"></label>`;
-    cg.appendChild(d);
+  for (const [k, mc] of Object.entries(cfg.machines))
+    adminRow(cg, mc.label, "machine", k, "rate_cny_per_hour", mc.rate_cny_per_hour, 5);
+  const fg = $("admin-finishes"); fg.innerHTML = "";
+  for (const [k, fn] of Object.entries(cfg.finishes || {})) {
+    adminRow(fg, fn.label + " 起步", "finish", k, "setup_cny", fn.setup_cny, 1);
+    adminRow(fg, fn.label + " /dm²", "finish", k, "per_dm2_cny", fn.per_dm2_cny, 0.5);
+    adminRow(fg, fn.label + " 保底", "finish", k, "min_cny", fn.min_cny, 1);
   }
+  const bg = $("admin-business"); bg.innerHTML = "";
+  for (const [k, v] of Object.entries(cfg.business || {}))
+    adminRow(bg, BIZ_LABELS[k] || k, "business", "", k, v, k.includes("rate") || k === "margin" ? 0.01 : 1);
   $("admin-modal").classList.remove("hidden");
 }
 function closeAdmin() { $("admin-modal").classList.add("hidden"); }

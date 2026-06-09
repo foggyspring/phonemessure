@@ -145,3 +145,21 @@ def test_price_revert_undoes_override(client):
     assert r.json()["ok"] and r.json()["reverted"] == 1
     assert client.get("/api/materials").json()["materials"]["AL6061"]["price_cny_per_kg"] == base
     assert client.request("DELETE", "/api/admin/price", json={"scope": "all"}).status_code == 401
+
+
+def test_admin_config_and_business_finish_overrides(client):
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    cfg = client.get("/api/admin/config", headers=h).json()
+    assert {"materials", "machines", "finishes", "business"} <= set(cfg)
+    assert "margin" in cfg["business"] and "anodize_clear" in cfg["finishes"]
+    # finishing cost is now runtime-maintainable
+    assert client.put("/api/admin/price", headers=h, json={
+        "kind": "finish", "key": "bead_blast", "field": "per_dm2_cny", "value": 12}).status_code == 200
+    # business params (margin/tax/deburr) are runtime-maintainable and audited
+    assert client.put("/api/admin/price", headers=h, json={
+        "kind": "business", "key": "", "field": "margin", "value": 0.42}).status_code == 200
+    assert client.get("/api/admin/config", headers=h).json()["business"]["margin"] == 0.42
+    # non-overridable fields rejected
+    assert client.put("/api/admin/price", headers=h, json={
+        "kind": "business", "key": "", "field": "quantity_breaks", "value": 5}).status_code == 400
+    assert client.get("/api/admin/config").status_code == 401   # admin-only
