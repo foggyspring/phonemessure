@@ -32,6 +32,7 @@ def analyze_dfm(
     max_part_mm: float | None = None,
     wall_auto: bool = False,
     holes_auto: bool = False,
+    watertight: bool = True,
 ) -> list[dict]:
     out: list[dict] = []
     dims = sorted(metrics.dims_mm)
@@ -122,6 +123,12 @@ def analyze_dfm(
         out.append(_f("info", "tight_tol", "精密公差 Tight tolerance",
                       "精密公差需额外检测与慢走刀。",
                       "仅对关键尺寸标注紧公差以控成本。"))
+
+    # ---- non-watertight mesh: volume (→ material cost) less reliable ----
+    if not watertight:
+        out.append(_f("medium", "open_mesh", "网格非水密 Non-watertight mesh",
+                      "模型非封闭，体积/重量估算可能偏差，料费仅供参考。",
+                      "建议导出封闭实体（修复法线/补面）后重新报价。"))
 
     # ---- universal reminder: inside corners always carry an R ----
     out.append(_f("info", "inner_radius", "内角圆角 Inner radius",

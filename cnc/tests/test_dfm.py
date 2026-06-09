@@ -61,3 +61,18 @@ def test_unit_suspect_on_sub_3mm_part():
     # a normal part has no unit-suspect flag
     assert not any(d["code"] == "unit_suspect" for d in analyze_dfm(
         metrics_from_stl_bytes(cube_stl(50.0)), analyze(metrics_from_stl_bytes(cube_stl(50.0)))))
+
+
+def test_non_watertight_mesh_flagged():
+    # ~30% of real web meshes are non-watertight → volume/material cost less
+    # reliable. Drop two faces from a box to make an open mesh.
+    import trimesh
+    from cnc.service import QuoteRequest, build_quote
+    box = trimesh.creation.box((40, 40, 40)); box.apply_translation((20, 20, 20))
+    open_mesh = trimesh.Trimesh(vertices=box.vertices, faces=box.faces[:-2], process=False)
+    assert not open_mesh.is_watertight
+    sb = open_mesh.export(file_type="stl")
+    q = build_quote(metrics_from_stl_bytes(sb), QuoteRequest(material="AL6061", quantity=10),
+                    mesh_stl=sb, backend="analytic")
+    assert any(d["code"] == "open_mesh" for d in q["dfm"])
+    assert any("非水密" in r for r in q["confidence"]["reasons"])

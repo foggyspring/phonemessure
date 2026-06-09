@@ -10,10 +10,13 @@ from __future__ import annotations
 
 def score_quote(*, backend: str, complexity: float, holes_auto: bool, wall_auto: bool,
                 undercut_frac: float, near_envelope: bool, has_mesh: bool,
-                calibration_n: int, dim_suspect: bool = False) -> dict:
+                calibration_n: int, dim_suspect: bool = False,
+                watertight: bool = True) -> dict:
     score = 90.0
     reasons: list[str] = []
 
+    if not watertight:
+        score -= 8; reasons.append("网格非水密，体积/料费估算可靠性下降")
     if dim_suspect:
         # implausible size ⇒ probable unit error ⇒ the quote is not trustworthy
         score -= 45

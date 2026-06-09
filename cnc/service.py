@@ -196,6 +196,7 @@ def build_quote(
                         surf_classes[0] if surf_classes else None)
 
     # Mesh-derived fixturing setups + undercut fraction (refines the bbox guess).
+    mesh_watertight = True
     if mesh_stl is not None:
         from .geometry.setups import analyze_setups, estimate_setups_3axis
         si = analyze_setups(mesh_stl)
@@ -203,6 +204,7 @@ def build_quote(
             feat.setup_dirs = si["setup_dirs"]
             feat.setup_count = estimate_setups_3axis(si)
             feat.undercut_frac = si["undercut_frac"]
+            mesh_watertight = si.get("watertight", True)
 
     # Suspiciously tiny part — likely an inch drawing read as mm.
     if max_dim < 3.0:
@@ -298,7 +300,8 @@ def build_quote(
         "warnings": feat.warnings,
         "dfm": analyze_dfm(metrics, feat, tight_tolerance=req.tight_tolerance,
                            requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
-                           wall_auto=auto_wall is not None, holes_auto=holes_auto),
+                           wall_auto=auto_wall is not None, holes_auto=holes_auto,
+                           watertight=mesh_watertight),
         "material_suggestions": suggest_materials(feat, material, finish, shop, req.quantity),
         "fx": _resolve_fx(shop, req.currency),
         "logistics": _logistics(shop, plan, material, req.quantity, quote),
@@ -308,6 +311,7 @@ def build_quote(
             backend=backend_info.get("used", ""), complexity=metrics.complexity,
             holes_auto=holes_auto, wall_auto=auto_wall is not None,
             undercut_frac=feat.undercut_frac, near_envelope=bool(max_part and max_dim > 0.8 * max_part),
-            has_mesh=mesh_stl is not None, calibration_n=cal_n, dim_suspect=max_dim < 3.0),
+            has_mesh=mesh_stl is not None, calibration_n=cal_n, dim_suspect=max_dim < 3.0,
+            watertight=mesh_watertight),
         "estimator": backend_info,
     }

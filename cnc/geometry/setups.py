@@ -58,8 +58,12 @@ def analyze_setups(stl_bytes: bytes, *, max_faces: int = 200000) -> dict | None:
         if dir_area[(ax, 1.0)] > _SIGNIFICANT and dir_area[(ax, -1.0)] > _SIGNIFICANT
     )
     undercut_frac = float(a[~aligned_any].sum()) / total
+    try:
+        watertight = bool(mesh.is_watertight)
+    except Exception:
+        watertight = True
     return {"setup_dirs": setup_dirs, "axes_flipped": axes_flipped,
-            "undercut_frac": round(undercut_frac, 3)}
+            "undercut_frac": round(undercut_frac, 3), "watertight": watertight}
 
 
 def estimate_setups_3axis(info: dict | None) -> int | None:
