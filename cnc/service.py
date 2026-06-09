@@ -112,12 +112,22 @@ def build_quote(
             f"请确认图纸单位或缩放。Part exceeds machinable envelope."
         )
 
+    # Min wall: use the declared value, else auto-detect from the mesh (shot-ray
+    # thickness) so DFM/cost flag thin walls even when nothing was declared.
+    min_wall = req.min_wall_mm
+    auto_wall = None
+    if min_wall is None and mesh_stl is not None:
+        from .geometry.thickness import estimate_min_wall_mm
+        raw = estimate_min_wall_mm(mesh_stl)          # in the mesh's native units
+        auto_wall = round(raw * unit_scale, 3) if raw is not None else None
+        min_wall = auto_wall
+
     feat = analyze(
         metrics,
         holes=req.holes,
         tight_tolerance=req.tight_tolerance,
         requires_5axis=req.requires_5axis,
-        min_wall_mm=req.min_wall_mm,
+        min_wall_mm=min_wall,
     )
 
     # Suspiciously tiny part — likely an inch drawing read as mm.
@@ -196,11 +206,14 @@ def build_quote(
             # Finished-part weight (clamped part volume × density) for logistics.
             "part_weight_g": round(plan.part_volume_cm3 * material.density_g_cm3, 1),
             "stock_weight_g": round(plan.stock_volume_cm3 * material.density_g_cm3, 1),
+            "min_wall_mm": round(min_wall, 3) if min_wall is not None else None,
+            "min_wall_auto": auto_wall is not None,
         },
         "plan": plan_d,
         "quote": quote.to_dict(),
         "warnings": feat.warnings,
         "dfm": analyze_dfm(metrics, feat, tight_tolerance=req.tight_tolerance,
-                           requires_5axis=req.requires_5axis, max_part_mm=max_part or None),
+                           requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
+                           wall_auto=auto_wall is not None),
         "estimator": backend_info,
     }

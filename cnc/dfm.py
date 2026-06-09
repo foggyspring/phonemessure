@@ -30,10 +30,12 @@ def analyze_dfm(
     tight_tolerance: bool = False,
     requires_5axis: bool = False,
     max_part_mm: float | None = None,
+    wall_auto: bool = False,
 ) -> list[dict]:
     out: list[dict] = []
     dims = sorted(metrics.dims_mm)
     longest, shortest = dims[2], dims[0]
+    auto = "（自动检测 auto）" if wall_auto else ""
 
     # ---- slender / whippy part ----
     if shortest > 0:
@@ -52,11 +54,11 @@ def analyze_dfm(
     if mw is not None and mw > 0:
         if mw < 0.5:
             out.append(_f("high", "thin_wall", "壁厚过薄 Very thin wall",
-                          f"最小壁厚 {mw:.2f}mm，极易变形/让刀。",
+                          f"最小壁厚 {mw:.2f}mm{auto}，极易变形/让刀。",
                           "增厚至 ≥1mm，或预留工艺夹持后再去除。"))
         elif mw < _THIN_WALL_MM:
             out.append(_f("medium", "thin_wall", "薄壁 Thin wall",
-                          f"最小壁厚 {mw:.2f}mm < {_THIN_WALL_MM:.0f}mm，有变形风险。",
+                          f"最小壁厚 {mw:.2f}mm < {_THIN_WALL_MM:.0f}mm{auto}，有变形风险。",
                           "尽量增厚或分粗精多刀轻切。"))
 
     # ---- holes: depth/dia ratio, small dia, small tapped ----

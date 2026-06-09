@@ -446,6 +446,8 @@ function renderResult(p, isLive) {
     ["毛坯填充 Fill", g.bbox_fill_pct != null ? g.bbox_fill_pct + " %" : "—"],
     ["重量 Weight", g.part_weight_g != null ? (g.part_weight_g / 1000).toFixed(3) + " kg" : "—"],
     ["复杂度 Complexity", (g.complexity * 100).toFixed(0) + " %"],
+    ...(g.min_wall_mm != null ? [["最小壁厚 Min wall",
+        `${g.min_wall_mm.toFixed(2)} mm${g.min_wall_auto ? ' <span class="muted tiny">(自动检测)</span>' : ""}`]] : []),
     ["三角面 Triangles", g.triangles || "—"],
   ]);
 
