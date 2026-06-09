@@ -43,8 +43,9 @@ class PriceService:
             if q:                       # fresh data → update cache
                 self._cache, self._ts = q, now
                 return q
-        except Exception:
-            pass                        # network/parse failure → consider stale cache
+        except Exception as exc:        # network/parse failure → consider stale cache
+            import logging
+            logging.getLogger("cnc.pricing").warning("price feed %s failed: %s", self.feed.name, exc)
         # Re-fetch failed: serve the cache only if it is not dangerously stale,
         # otherwise fall back to static (never quote on day-old metal prices).
         if self._cache and now - self._ts <= self.max_age_s:

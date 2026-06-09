@@ -169,20 +169,24 @@ def _help_text() -> str:
 def get_provider() -> LLMProvider:
     """Select the provider by env; fall back to mock when none is configured."""
     kind = os.environ.get("AI_PROVIDER", "mock").lower()
+    import logging
+    _log = logging.getLogger("cnc.ai")
     if kind in ("anthropic", "claude"):
         try:
             from .providers_real import AnthropicProvider
             p = AnthropicProvider()
             if p.available:
                 return p
-        except Exception:
-            pass
+            _log.warning("AI_PROVIDER=anthropic but unavailable (no SDK/key) — using mock")
+        except Exception as exc:
+            _log.warning("anthropic provider init failed: %s — using mock", exc)
     elif kind in ("openai", "compatible"):
         try:
             from .providers_real import OpenAIProvider
             p = OpenAIProvider()
             if p.available:
                 return p
-        except Exception:
-            pass
+            _log.warning("AI_PROVIDER=openai but no key (AI_API_KEY) — using mock")
+        except Exception as exc:
+            _log.warning("openai provider init failed: %s — using mock", exc)
     return MockProvider()
