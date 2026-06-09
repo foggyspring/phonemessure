@@ -27,6 +27,7 @@ class CostBreakdown:
     material_cny: float
     machining_cny: float
     finish_variable_cny: float
+    addon_per_part_cny: float
     amortized_one_time_cny: float
     unit_cost_cny: float
     margin: float
@@ -133,6 +134,7 @@ def _breakdown(
         material_cny=material_cny,
         machining_cny=machining_cny,
         finish_variable_cny=finish_var_cny,
+        addon_per_part_cny=addon_per_part_cny,
         amortized_one_time_cny=amortized,
         unit_cost_cny=unit_cost,
         margin=margin,

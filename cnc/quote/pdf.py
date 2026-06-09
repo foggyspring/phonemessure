@@ -174,6 +174,27 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
     flow.append(spec)
     flow.append(Spacer(1, 5 * mm))
 
+    # ---- Process routing (工艺路线) ----
+    steps = plan.get("process_steps") or []
+    if steps:
+        flow.append(Paragraph("<b>工艺路线 Process routing</b>", body))
+        pr_rows = [["#", "工序 Step", "工时 Time", "范围 Scope"]]
+        for s in steps:
+            mins = f"{s['minutes']:.2f} min" if s["minutes"] > 0 else "—"
+            pr_rows.append([str(s["step"]), s["name"], mins, s.get("scope", "")])
+        pr = Table(pr_rows, colWidths=[12 * mm, 86 * mm, 30 * mm, 36 * mm])
+        pr.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), _FONT), ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f3f6")),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"), ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+            ("TEXTCOLOR", (3, 1), (3, -1), _GREY),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, _GREY),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafbfc")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+        ]))
+        flow.append(pr)
+        flow.append(Spacer(1, 5 * mm))
+
     # ---- Cost breakdown (per unit) ----
     flow.append(Paragraph("<b>成本构成 Cost breakdown (单件 per unit)</b>", body))
     cb_rows = [["项目 Item", "金额 Amount"]]
@@ -188,6 +209,10 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
     cb_rows += [
         ["加工费 Machining", _money(req["machining_cny"], cur)],
         ["表面处理 Finishing", _money(req["finish_variable_cny"], cur)],
+    ]
+    if req.get("addon_per_part_cny", 0) > 0:
+        cb_rows.append(["去毛刺/增项 Post-process & add-ons", _money(req["addon_per_part_cny"], cur)])
+    cb_rows += [
         ["编程/准备摊销 Setup (amortized)", _money(req["amortized_one_time_cny"], cur)],
         ["单件成本 Unit cost", _money(req["unit_cost_cny"], cur)],
         [f"利润率 Margin ({req['margin']*100:.0f}%) 后单价 Unit price", _money(req["unit_price_cny"], cur)],

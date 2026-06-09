@@ -503,6 +503,7 @@ function renderResult(p, isLive) {
     ...matRows,
     ["加工费 Machining", money(r.machining_cny, cur)],
     ["表面处理 Finishing", money(r.finish_variable_cny, cur)],
+    ...(r.addon_per_part_cny > 0 ? [["去毛刺/增项 Post-process", money(r.addon_per_part_cny, cur)]] : []),
     ["编程摊销 Setup/ea", money(r.amortized_one_time_cny, cur)],
     ["单件成本 Unit cost", money(r.unit_cost_cny, cur)],
     [`利润率 Margin`, (r.margin * 100).toFixed(0) + " %"],

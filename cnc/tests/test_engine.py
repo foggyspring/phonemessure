@@ -30,6 +30,16 @@ def test_removed_volume_drives_material():
     assert abs(q["plan"]["part_volume_cm3"] - 125.0) < 0.01
 
 
+def test_cost_lines_reconcile_with_deburr_exposed():
+    # metal parts carry a deburring/post-process line; the breakdown lines must
+    # sum to unit_cost so a customer can verify it by hand.
+    r = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=10))["quote"]["requested"]
+    assert r["addon_per_part_cny"] > 0          # deburring present for metal
+    s = (r["material_cny"] + r["machining_cny"] + r["finish_variable_cny"]
+         + r["addon_per_part_cny"] + r["amortized_one_time_cny"])
+    assert abs(s - r["unit_cost_cny"]) < 0.05
+
+
 def test_scrap_credit_reduces_material_cost():
     import trimesh
 
