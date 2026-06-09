@@ -63,6 +63,16 @@ def test_unit_suspect_on_sub_3mm_part():
         metrics_from_stl_bytes(cube_stl(50.0)), analyze(metrics_from_stl_bytes(cube_stl(50.0)))))
 
 
+def test_tap_drill_recommendation_for_metric_thread():
+    m = metrics_from_stl_bytes(cube_stl(50.0))
+    feat = analyze(m, holes=[Hole(diameter_mm=6.0, depth_mm=15.0, count=4, threaded=True)])
+    td = [d for d in analyze_dfm(m, feat) if d["code"] == "tap_drill"]
+    assert td and "5" in td[0]["detail"]            # M6 → Ø5.0 tap-drill
+    # plain (non-threaded) hole gets no tap-drill note
+    feat2 = analyze(m, holes=[Hole(diameter_mm=6.0, depth_mm=15.0, count=4)])
+    assert not any(d["code"] == "tap_drill" for d in analyze_dfm(m, feat2))
+
+
 def test_thread_engagement_too_shallow():
     # blind tapped hole with < 1×D engagement → strength warning
     m = metrics_from_stl_bytes(cube_stl(50.0))

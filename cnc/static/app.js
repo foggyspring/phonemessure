@@ -486,6 +486,11 @@ function renderResult(p, isLive) {
     `× ${r.quantity} 件 · 净额 ${money(q.net_total_cny != null ? q.net_total_cny : r.line_total_cny, cur)}` +
     ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
     ` · 交期 ${q.lead_days} 天${q.delivery_date ? `（约 ${q.delivery_date} 交付）` : ""}${valid}`;
+  const pw = $("price-why");
+  if (pw) {
+    const drv = p.price_drivers;
+    pw.innerHTML = drv && drv.summary ? `<span class="muted tiny">${drv.summary}</span>` : "";
+  }
   renderConfidence(p);
   renderLogistics(p);
   renderCompare(p);

@@ -17,6 +17,20 @@ _RANK = {"high": 3, "medium": 2, "low": 1, "info": 0}
 _THIN_WALL_MM = 1.0
 _SLENDER_RATIO = 8.0
 
+# Standard coarse-pitch metric threads → recommended tap-drill (mm).
+# (nominal Ø, pitch, tap-drill) — drill ≈ nominal − pitch.
+_METRIC_TAP = [
+    (2.0, 0.4, 1.6), (2.5, 0.45, 2.05), (3.0, 0.5, 2.5), (4.0, 0.7, 3.3),
+    (5.0, 0.8, 4.2), (6.0, 1.0, 5.0), (8.0, 1.25, 6.8), (10.0, 1.5, 8.5),
+    (12.0, 1.75, 10.2), (16.0, 2.0, 14.0),
+]
+
+
+def _nearest_metric_thread(d: float):
+    """Closest standard metric thread to a nominal diameter (within 0.6mm)."""
+    best = min(_METRIC_TAP, key=lambda t: abs(t[0] - d))
+    return best if abs(best[0] - d) <= 0.6 else None
+
 
 def _f(severity: str, code: str, title: str, detail: str, suggestion: str) -> dict:
     return {"severity": severity, "code": code, "title": title,
@@ -99,6 +113,16 @@ def analyze_dfm(
             out.append(_f("medium", "small_tap", "细牙螺纹孔 Small tapped hole",
                           f"Ø{d:g} 螺纹孔攻丝易断丝。",
                           "确认螺距，必要时改螺纹铣。"))
+        # tap-drill guidance: map a threaded hole's nominal Ø to the standard
+        # metric thread and its底孔(tap-drill) — a concrete shop instruction.
+        if h.threaded and d > 0:
+            th = _nearest_metric_thread(d)
+            if th:
+                nom, pitch, drill = th
+                out.append(_f("info", "tap_drill", "螺纹底孔 Tap-drill",
+                              f"Ø{d:g} 螺纹孔按 M{nom:g}×{pitch:g} 处理，"
+                              f"底孔钻 Ø{drill:g}mm（=公称−螺距）。",
+                              "如为细牙/英制螺纹请在备注注明，底孔随之调整。"))
         # thread engagement depth: AL/软材料推荐 1.5–2×D，<1×D 螺纹强度不足
         if h.threaded and d > 0:
             eng = depth / d

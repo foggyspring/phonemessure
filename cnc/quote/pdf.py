@@ -254,6 +254,10 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
         )
     )
     flow.append(cb)
+    drivers = payload.get("price_drivers") or {}
+    if drivers.get("summary"):
+        flow.append(Spacer(1, 2 * mm))
+        flow.append(Paragraph(f"价格构成 Price drivers: {drivers['summary']}", small))
     if quote.get("addons"):
         names = "、".join(a["label"] for a in quote["addons"])
         flow.append(Spacer(1, 2 * mm))

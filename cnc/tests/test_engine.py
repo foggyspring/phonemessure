@@ -30,6 +30,16 @@ def test_removed_volume_drives_material():
     assert abs(q["plan"]["part_volume_cm3"] - 125.0) < 0.01
 
 
+def test_price_drivers_summary():
+    # qty1 should be setup-dominated; qty50 should be machining/material-dominated
+    one = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=1))["price_drivers"]
+    fifty = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=50))["price_drivers"]
+    assert one["summary"] and fifty["summary"]
+    assert sum(d["pct"] for d in one["top"]) <= 100
+    assert "Setup" in one["top"][0]["label"]              # one-time dominates at qty1
+    assert "Setup" not in fifty["top"][0]["label"]        # amortized away at qty50
+
+
 def test_cost_lines_reconcile_with_deburr_exposed():
     # metal parts carry a deburring/post-process line; the breakdown lines must
     # sum to unit_cost so a customer can verify it by hand.

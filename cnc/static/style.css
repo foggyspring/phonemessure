@@ -259,6 +259,7 @@ table.kv td:last-child { text-align: right; font-variant-numeric: tabular-nums; 
   text-shadow: 0 2px 18px rgba(47,129,247,.4);
 }
 .bignum-sub { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+.price-why { text-align: center; line-height: 1.5; margin: -8px 0 12px; padding: 0 6px; }
 
 .tiers-head { display: flex; justify-content: space-between; align-items: center; }
 table.tiers { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; overflow: hidden; border-radius: 8px; }

@@ -17,6 +17,31 @@ from .dfm import analyze_dfm
 from .suggest import compare_all_materials, suggest_materials
 
 
+def _price_drivers(req_cost: dict) -> dict:
+    """Plain-language 'why this price' summary for the customer.
+
+    Ranks the unit-cost components and names the top contributors with their
+    share, so a quote isn't a black box. Pure function of the cost breakdown.
+    """
+    parts = [
+        ("材料 Material", req_cost.get("material_cny", 0)),
+        ("加工 Machining", req_cost.get("machining_cny", 0)),
+        ("表面处理 Finishing", req_cost.get("finish_variable_cny", 0)),
+        ("去毛刺/增项 Post-process", req_cost.get("addon_per_part_cny", 0)),
+        ("编程/装夹摊销 Setup", req_cost.get("amortized_one_time_cny", 0)),
+    ]
+    total = sum(max(0.0, v) for _, v in parts) or 1.0
+    ranked = sorted(parts, key=lambda kv: -kv[1])
+    top = [{"label": n, "cny": round(v, 2), "pct": round(100 * v / total)}
+           for n, v in ranked if v > 0][:3]
+    if top:
+        phrase = "、".join(f"{d['label']}({d['pct']}%)" for d in top)
+        summary = f"价格主要由 {phrase} 构成；提高数量可摊薄一次性编程/装夹费用。"
+    else:
+        summary = ""
+    return {"top": top, "summary": summary}
+
+
 def _logistics(shop: ShopData, plan, material, qty: int, quote) -> dict:
     """Weight-based shipping estimate + minimum-order check (CNY base)."""
     biz = shop.business
@@ -297,6 +322,7 @@ def build_quote(
         },
         "plan": plan_d,
         "quote": quote.to_dict(),
+        "price_drivers": _price_drivers(quote.requested.to_dict()),
         "warnings": feat.warnings,
         "dfm": analyze_dfm(metrics, feat, tight_tolerance=req.tight_tolerance,
                            requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
