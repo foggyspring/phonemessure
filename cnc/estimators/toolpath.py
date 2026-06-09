@@ -54,11 +54,12 @@ def _section_polys(mesh, z):
     """Return a shapely geometry of the part's solid cross-section at height z.
 
     Built from the section's discrete loops in world XY (so it lines up with the
-    stock rectangle). Internal loops (holes) are unioned in — i.e. holes read as
-    solid, which is correct here: holes are drilled, not roughed.
+    stock rectangle). Nesting is resolved by *even-odd* fill (chained symmetric
+    difference): a region inside an odd number of loops is solid, an even number
+    is a void. This is what makes milled pockets/cavities read as empty space —
+    so roughing actually clears them — while the outer body stays solid.
     """
     from shapely.geometry import Polygon
-    from shapely.ops import unary_union
 
     try:
         sec = mesh.section(plane_origin=(0, 0, z), plane_normal=(0, 0, 1))
@@ -66,18 +67,20 @@ def _section_polys(mesh, z):
         sec = None
     if sec is None:
         return None
-    polys = []
-    for loop in sec.discrete:               # each loop: Nx3 closed polyline
+    acc = None
+    for loop in sec.discrete:                # each loop: Nx3 closed polyline
         xy = loop[:, :2]
-        if len(xy) >= 3:
-            p = Polygon(xy)
-            if not p.is_valid:
-                p = p.buffer(0)
-            if not p.is_empty and p.area > 1e-6:
-                polys.append(p)
-    if not polys:
+        if len(xy) < 3:
+            continue
+        p = Polygon(xy)
+        if not p.is_valid:
+            p = p.buffer(0)
+        if p.is_empty or p.area <= 1e-6:
+            continue
+        acc = p if acc is None else acc.symmetric_difference(p)
+    if acc is None or acc.is_empty:
         return None
-    return unary_union(polys)
+    return acc
 
 
 def _offset_pass_length(region, stepover: float) -> float:

@@ -77,3 +77,32 @@ def test_make_plan_falls_back_without_mesh():
     feat = analyze(metrics_from_stl_bytes(cube_stl(40.0)))
     plan, info = estimators.make_plan(feat, shop.material("AL6061"), shop, backend="auto")
     assert info["used"] == "analytic"
+
+
+def test_pocket_roughs_more_than_solid():
+    """Regression: a milled cavity must add roughing vs the same solid block.
+
+    Earlier the cross-section unioned internal loops (filled the pocket), so a
+    pocketed part reported identical roughing to the solid — this guards it.
+    """
+    shop = load()
+    mat = shop.material("AL6061")
+
+    solid = trimesh.creation.box(extents=(100, 60, 30))
+    solid.apply_translation((50, 30, 15))
+    base = trimesh.creation.box(extents=(100, 60, 30))
+    base.apply_translation((50, 30, 15))
+    cav = trimesh.creation.box(extents=(80, 40, 22))
+    cav.apply_translation((50, 30, 19))
+    pocketed = base.difference(cav)
+
+    fs = analyze(metrics_from_stl_bytes(solid.export(file_type="stl")))
+    fp = analyze(metrics_from_stl_bytes(pocketed.export(file_type="stl")))
+    ps = tp.plan_toolpath(fs, mat, shop, tp.load_mesh(solid.export(file_type="stl")))
+    pp = tp.plan_toolpath(fp, mat, shop, tp.load_mesh(pocketed.export(file_type="stl")))
+
+    # pocket removes ~70 cm^3 more -> materially more roughing time + path.
+    assert pp.removed_volume_cm3 > ps.removed_volume_cm3 + 30
+    assert pp.times.roughing_min > ps.times.roughing_min * 1.5
+    rough = next(o for o in pp.operations if o["op"] == "roughing")
+    assert rough["levels"] >= 5      # cavity cleared across multiple depths
