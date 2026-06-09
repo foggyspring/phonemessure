@@ -228,8 +228,12 @@ def _simulate_drilling(feat: FeatureSet, cut: dict) -> tuple[float, float, dict]
 
 
 # --------------------------------------------------------------------------
-def load_mesh(stl_bytes: bytes):
-    """Load STL bytes into a trimesh.Trimesh (raises ToolpathUnavailable)."""
+def load_mesh(stl_bytes: bytes, scale: float = 1.0):
+    """Load STL bytes into a trimesh.Trimesh (raises ToolpathUnavailable).
+
+    *scale* converts the file's units to mm (e.g. 25.4 for an inch STL), so the
+    toolpath sim runs in the same mm space as the rest of the pipeline.
+    """
     try:
         import io
         import trimesh
@@ -243,6 +247,8 @@ def load_mesh(stl_bytes: bytes):
         raise ToolpathUnavailable("empty mesh")
     if len(mesh.faces) > _MAX_FACES:
         raise ToolpathUnavailable(f"mesh too large ({len(mesh.faces)} faces)")
+    if scale and scale != 1.0:
+        mesh.apply_scale(scale)
     return mesh
 
 

@@ -29,6 +29,8 @@ class QuoteRequest:
     machine: str | None = None
     holes: list[Hole] = field(default_factory=list)
     part_name: str = ""
+    units: str = "mm"          # "mm" | "inch" — unit of the uploaded geometry
+    customer: str = ""         # optional customer / project for the quote header
 
     @classmethod
     def from_payload(cls, p: dict) -> "QuoteRequest":
@@ -53,6 +55,8 @@ class QuoteRequest:
             machine=(str(p["machine"]) if p.get("machine") else None),
             holes=holes,
             part_name=str(p.get("part_name", "")),
+            units=("inch" if str(p.get("units", "mm")).lower() in ("inch", "in") else "mm"),
+            customer=str(p.get("customer", "")),
         )
 
 
@@ -85,6 +89,12 @@ def build_quote(
             f"可选: {', '.join(material.finish_ok)}"
         )
 
+    # Units: STL/IGES carry no unit, so honour the user's choice (mm | inch) and
+    # scale the geometry to mm. Catches the classic 25.4x inch-as-mm blunder.
+    unit_scale = 25.4 if req.units == "inch" else 1.0
+    if unit_scale != 1.0:
+        metrics = metrics.scaled(unit_scale)
+
     feat = analyze(
         metrics,
         holes=req.holes,
@@ -93,9 +103,17 @@ def build_quote(
         min_wall_mm=req.min_wall_mm,
     )
 
+    # Sanity check on absolute size — a likely wrong-unit upload.
+    max_dim = max(metrics.dims_mm)
+    if max_dim < 3.0:
+        feat.warnings.insert(0, f"零件最大尺寸仅 {max_dim:.2f}mm，疑似单位有误（英寸图纸？），请确认单位。")
+    elif max_dim > 3000.0:
+        feat.warnings.insert(0, f"零件最大尺寸 {max_dim:.0f}mm 异常偏大，请确认单位/缩放。")
+
     plan, backend_info = estimators.make_plan(
         feat, material, shop,
         backend=backend, machine_key=req.machine, mesh_stl=mesh_stl,
+        unit_scale=unit_scale,
     )
     quote = costing_mod.price(
         plan,
@@ -122,6 +140,8 @@ def build_quote(
             "tight_tolerance": req.tight_tolerance,
             "requires_5axis": feat.requires_5axis,
             "rush": req.rush,
+            "units": req.units,
+            "customer": req.customer,
             "holes": [
                 {
                     "diameter_mm": h.diameter_mm,
@@ -143,6 +163,9 @@ def build_quote(
             ),
             "complexity": round(metrics.complexity, 3),
             "triangles": metrics.triangles,
+            # Finished-part weight (clamped part volume × density) for logistics.
+            "part_weight_g": round(plan.part_volume_cm3 * material.density_g_cm3, 1),
+            "stock_weight_g": round(plan.stock_volume_cm3 * material.density_g_cm3, 1),
         },
         "plan": plan_d,
         "quote": quote.to_dict(),

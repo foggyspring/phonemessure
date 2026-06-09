@@ -89,3 +89,30 @@ def test_shopdata_loads():
     shop = load()
     assert "AL6061" in shop.materials
     assert shop.machine("mill_3axis").rate_cny_per_hour == 60.0
+
+
+def test_inch_units_scale_geometry():
+    # the same file quoted as inch must be 25.4× larger per axis than as mm.
+    stl = cube_stl(2.0)
+    mm = build_quote(metrics_from_stl_bytes(stl), QuoteRequest(material="AL6061", quantity=1, units="mm"))
+    inch = build_quote(metrics_from_stl_bytes(stl), QuoteRequest(material="AL6061", quantity=1, units="inch"))
+    assert abs(inch["geometry"]["dims_mm"][0] - 2.0 * 25.4) < 1e-3
+    assert inch["geometry"]["part_weight_g"] > mm["geometry"]["part_weight_g"] * 1000  # 25.4^3 ≈ 16387
+    assert inch["quote"]["requested"]["unit_price_cny"] > mm["quote"]["requested"]["unit_price_cny"]
+
+
+def test_suspicious_tiny_part_warns_units():
+    q = build_quote(metrics_from_stl_bytes(cube_stl(1.5)), QuoteRequest(material="AL6061", quantity=1))
+    assert any("单位" in w for w in q["warnings"])
+
+
+def test_tax_and_validity_present():
+    q = build_quote(metrics_from_stl_bytes(cube_stl(50.0)), QuoteRequest(material="AL6061", quantity=10))
+    Q = q["quote"]
+    assert Q["tax_rate"] == 0.13
+    # grand total = net × (1 + tax), within rounding
+    assert abs(Q["total_incl_tax_cny"] - Q["net_total_cny"] * 1.13) < 0.05
+    assert abs(Q["tax_cny"] - Q["net_total_cny"] * 0.13) < 0.05
+    assert Q["valid_until"] is not None
+    # part weight surfaced
+    assert q["geometry"]["part_weight_g"] > 0

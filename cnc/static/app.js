@@ -354,6 +354,8 @@ function buildParams(save) {
     requires_5axis: $("fiveaxis").checked,
     rush: $("rush").checked,
     backend: $("backend").value,
+    units: $("units").value,
+    customer: $("customer").value.trim(),
     holes: collectHoles(),
     save,
   };
@@ -432,6 +434,7 @@ function renderResult(p, isLive) {
     ["体积 Volume", g.volume_cm3 + " cm³"],
     ["表面积 Surface", g.area_cm2 + " cm²"],
     ["毛坯填充 Fill", g.bbox_fill_pct != null ? g.bbox_fill_pct + " %" : "—"],
+    ["重量 Weight", g.part_weight_g != null ? (g.part_weight_g / 1000).toFixed(3) + " kg" : "—"],
     ["复杂度 Complexity", (g.complexity * 100).toFixed(0) + " %"],
     ["三角面 Triangles", g.triangles || "—"],
   ]);
@@ -451,7 +454,13 @@ function renderResult(p, isLive) {
 
   countUp($("bignum"), state.lastPrice || 0, r.unit_price_cny, cur);
   state.lastPrice = r.unit_price_cny;
-  $("bignum-sub").textContent = `× ${r.quantity} 件 = ${money(r.line_total_cny, cur)} · 交期 ${q.lead_days} 天${q.rush ? " (加急)" : ""}`;
+  const taxPct = ((q.tax_rate || 0) * 100).toFixed(0);
+  const grand = q.total_incl_tax_cny != null ? q.total_incl_tax_cny : r.line_total_cny;
+  const valid = q.valid_until ? ` · 有效期至 ${q.valid_until}` : "";
+  $("bignum-sub").innerHTML =
+    `× ${r.quantity} 件 · 净额 ${money(q.net_total_cny != null ? q.net_total_cny : r.line_total_cny, cur)}` +
+    ` · <b>含税 ${money(grand, cur)}</b>${q.tax_rate ? ` (${q.tax_label || "税"} ${taxPct}%)` : ""}` +
+    ` · 交期 ${q.lead_days} 天${q.rush ? " 加急" : ""}${valid}`;
   $("cost-table").innerHTML = kv([
     ["材料费 Material", money(r.material_cny, cur)],
     ["加工费 Machining", money(r.machining_cny, cur)],
@@ -686,7 +695,7 @@ function main() {
   $("admin-modal").addEventListener("click", (e) => { if (e.target.id === "admin-modal") closeAdmin(); });
 
   // Live re-quote on any parameter change (once a first quote exists).
-  ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "rush", "backend"].forEach((id) =>
+  ["quantity", "finish", "machine", "minwall", "tight", "fiveaxis", "rush", "backend", "units", "customer"].forEach((id) =>
     $(id).addEventListener("change", scheduleLiveQuote));
   $("material").addEventListener("change", scheduleLiveQuote);
   ["m-l", "m-w", "m-h", "m-v"].forEach((id) =>

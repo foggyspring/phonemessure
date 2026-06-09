@@ -55,8 +55,19 @@ class Quote:
     currency: str
     machine_rate_cny_h: float
     notes: list[str]
+    tax_rate: float = 0.0
+    tax_label: str = ""
+    valid_days: int = 0
 
     def to_dict(self) -> dict:
+        # Tax is charged on the requested line total; the grand total is what
+        # the customer pays. Quote carries a validity window since prices move.
+        from datetime import date, timedelta
+
+        net = round(self.requested.unit_price_cny, 2) * self.requested.quantity
+        tax = net * self.tax_rate
+        valid_until = (date.today() + timedelta(days=self.valid_days)).isoformat() \
+            if self.valid_days else None
         return {
             "requested": self.requested.to_dict(),
             "tiers": [t.to_dict() for t in self.tiers],
@@ -66,6 +77,13 @@ class Quote:
             "rush": self.rush,
             "currency": self.currency,
             "machine_rate_cny_h": self.machine_rate_cny_h,
+            "tax_rate": self.tax_rate,
+            "tax_label": self.tax_label,
+            "tax_cny": round(tax, 2),
+            "net_total_cny": round(net, 2),
+            "total_incl_tax_cny": round(net + tax, 2),
+            "valid_days": self.valid_days,
+            "valid_until": valid_until,
             "notes": self.notes,
         }
 
@@ -181,4 +199,7 @@ def price(
         currency=str(biz["currency"]),
         machine_rate_cny_h=plan.machine.rate_cny_per_hour,
         notes=notes,
+        tax_rate=float(biz.get("tax_rate", 0.0)),
+        tax_label=str(biz.get("tax_label", "")),
+        valid_days=int(biz.get("quote_valid_days", 0)),
     )

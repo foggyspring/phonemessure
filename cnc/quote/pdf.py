@@ -117,10 +117,13 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
     flow = []
     flow.append(Paragraph("CNC 加工报价单 · CNC Machining Quotation", h1))
     quote_no = quote_no or f"Q{date.today():%Y%m%d}-{abs(hash(str(payload))) % 10000:04d}"
+    valid_until = quote.get("valid_until")
     meta = Table(
         [
             ["报价单号 Quote No.", quote_no, "日期 Date", f"{date.today():%Y-%m-%d}"],
             ["零件 Part", inp.get("part_name", "—"), "交期 Lead", f"{quote['lead_days']} 天"],
+            ["客户 Customer", inp.get("customer") or "—", "有效期 Valid until",
+             valid_until or "—"],
         ],
         colWidths=[32 * mm, 56 * mm, 28 * mm, 48 * mm],
     )
@@ -148,6 +151,7 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
         ["公差 Tolerance", "精密 Tight" if inp["tight_tolerance"] else "标准 Standard"],
         ["外形 Bounding box", f"{dims[0]:.1f} × {dims[1]:.1f} × {dims[2]:.1f} mm"],
         ["体积 Volume", f"{geo['volume_cm3']:.2f} cm³"],
+        ["重量 Weight", f"{geo.get('part_weight_g', 0)/1000:.3f} kg / 件"],
         ["毛坯 Stock", f"{plan['stock']['length_mm']:.1f} × {plan['stock']['width_mm']:.1f} × {plan['stock']['height_mm']:.1f} mm"],
         ["机床 Machine", plan["machine_label"]],
         ["装夹/刀具 Setups/Tools", f"{plan['setups']} setups · {plan['tools']} tools"],
@@ -235,6 +239,31 @@ def build_quote_pdf(payload: dict, *, quote_no: str | None = None) -> bytes:
             style.append(("FONTNAME", (0, i), (-1, i), _FONT))
     tiers.setStyle(TableStyle(style))
     flow.append(tiers)
+    flow.append(Spacer(1, 5 * mm))
+
+    # ---- Order totals for the requested quantity (incl. tax) ----
+    tax_pct = quote.get("tax_rate", 0) * 100
+    tot_rows = [
+        [f"订单合计 Order total (×{req['quantity']})", _money(quote.get("net_total_cny", req["line_total_cny"]), cur)],
+        [f"{quote.get('tax_label','税')} ({tax_pct:.0f}%)", _money(quote.get("tax_cny", 0), cur)],
+        ["含税总计 Grand total", _money(quote.get("total_incl_tax_cny", req["line_total_cny"]), cur)],
+    ]
+    tot = Table(tot_rows, colWidths=[120 * mm, 44 * mm])
+    tot.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), _FONT),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.5, _GREY),
+                ("TEXTCOLOR", (0, -1), (-1, -1), _ACCENT),
+                ("FONTSIZE", (0, -1), (-1, -1), 11),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    flow.append(tot)
     flow.append(Spacer(1, 5 * mm))
 
     # ---- Notes & DFM warnings ----

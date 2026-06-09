@@ -97,6 +97,11 @@ python -m pytest cnc/tests -q
 无文件时用 `manual_dims` 兜底（STEP 无内核时前端自动切到此路径）。传 `"save": false`
 可跳过入库（用于试算）。
 
+`units`（`mm`/`inch`）按图纸单位缩放几何（STL 无单位，避免英寸件被当毫米导致
+25.4× 误差）；尺寸异常会给单位告警。报价单含**零件重量**（物流）、**增值税**
+（可配 `tax_rate`，默认 13%）、**有效期**（`quote_valid_days`，默认 30 天）与
+**客户抬头**（`customer`）。
+
 ---
 
 ## 工时估算的三级精度 Estimator backends（复用开源 CAM）

@@ -36,6 +36,9 @@
     "rush_factor": 1.4,
     "rush_lead_days": 3,
     "standard_lead_days": 10,
-    "quantity_breaks": [1, 5, 10, 25, 50, 100]
+    "quantity_breaks": [1, 5, 10, 25, 50, 100],
+    "tax_rate": 0.13,
+    "tax_label": "增值税 VAT",
+    "quote_valid_days": 30
   }
 }
