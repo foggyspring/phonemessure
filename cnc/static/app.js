@@ -361,6 +361,7 @@ function buildParams(save) {
     finish: $("finish").value,
     machine: $("machine").value || null,
     tolerance: $("tolerance").value,
+    surface_finish: $("surface_finish").value,
     requires_5axis: $("fiveaxis").checked,
     lead_time: state.leadTime,
     backend: $("backend").value,
@@ -872,7 +873,7 @@ function main() {
   $("cal-submit").addEventListener("click", submitCalibration);
 
   // Live re-quote on any parameter change (once a first quote exists).
-  ["quantity", "finish", "machine", "minwall", "tolerance", "fiveaxis", "backend", "units", "customer"].forEach((id) =>
+  ["quantity", "finish", "machine", "minwall", "tolerance", "surface_finish", "fiveaxis", "backend", "units", "customer"].forEach((id) =>
     $(id).addEventListener("change", scheduleLiveQuote));
   $("material").addEventListener("change", scheduleLiveQuote);
   ["m-l", "m-w", "m-h", "m-v"].forEach((id) =>

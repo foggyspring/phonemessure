@@ -215,6 +215,12 @@ def plan(
         finishing_min *= tol_factor
         notes.append(f"{tol['label'] if tol else '精密公差'}：切削系数 ×{tol_factor}")
 
+    # ---- Surface roughness (Ra): finer finish ⇒ slower finishing passes ----
+    if feat.surface is not None and float(feat.surface["finish_factor"]) != 1.0:
+        sf = float(feat.surface["finish_factor"])
+        finishing_min *= sf
+        notes.append(f"{feat.surface['label']}：精加工系数 ×{sf}")
+
     # Floor: tiny parts still cost real cycle time (load/unload/probe).
     raw_cut = roughing_min + finishing_min + drilling_min + tapping_min
     floor = capp["min_machine_min_per_part"]

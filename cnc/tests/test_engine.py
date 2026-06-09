@@ -198,3 +198,15 @@ def test_tolerance_classes_scale_price_and_inspection():
     assert ult["plan"]["times"]["inspection_min"] > pre["plan"]["times"]["inspection_min"]
     # legacy tight_tolerance still works (maps to a non-standard class)
     assert build_quote(m, QuoteRequest(material="AL6061", quantity=5, tight_tolerance=True))["quote"]["requested"]["unit_price_cny"] > su
+
+
+def test_surface_roughness_scales_finishing():
+    import trimesh
+    from cnc.geometry import metrics_from_stl_bytes
+    # a sphere has real finishing area to scale
+    sb = trimesh.creation.icosphere(subdivisions=3, radius=25).export(file_type="stl")
+    m = metrics_from_stl_bytes(sb)
+    std = build_quote(m, QuoteRequest(material="AL6061", quantity=1, surface_finish="standard"), mesh_stl=sb, backend="analytic")
+    mir = build_quote(m, QuoteRequest(material="AL6061", quantity=1, surface_finish="mirror"), mesh_stl=sb, backend="analytic")
+    assert mir["plan"]["times"]["finishing_min"] > std["plan"]["times"]["finishing_min"]
+    assert mir["quote"]["requested"]["unit_price_cny"] > std["quote"]["requested"]["unit_price_cny"]

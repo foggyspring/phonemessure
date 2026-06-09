@@ -26,6 +26,7 @@ class QuoteRequest:
     finish: str = "none"
     tight_tolerance: bool = False
     tolerance: str | None = None     # 标准/精密/超精 tolerance class key
+    surface_finish: str | None = None  # 表面粗糙度 Ra class key
     requires_5axis: bool = False
     min_wall_mm: float | None = None
     rush: bool = False
@@ -54,6 +55,7 @@ class QuoteRequest:
             finish=str(p.get("finish", "none")),
             tight_tolerance=bool(p.get("tight_tolerance", False)),
             tolerance=(str(p["tolerance"]) if p.get("tolerance") else None),
+            surface_finish=(str(p["surface_finish"]) if p.get("surface_finish") else None),
             requires_5axis=bool(p.get("requires_5axis", False)),
             min_wall_mm=(float(p["min_wall_mm"]) if p.get("min_wall_mm") else None),
             rush=bool(p.get("rush", False)),
@@ -155,6 +157,10 @@ def build_quote(
         min_wall_mm=min_wall,
     )
     feat.tolerance = tol
+    surf_classes = shop.business.get("surface_classes") or []
+    surf_key = req.surface_finish or shop.business.get("default_surface", "standard")
+    feat.surface = next((s for s in surf_classes if s["key"] == surf_key),
+                        surf_classes[0] if surf_classes else None)
 
     # Mesh-derived fixturing setups + undercut fraction (refines the bbox guess).
     if mesh_stl is not None:
@@ -220,6 +226,7 @@ def build_quote(
             "material_price_cny_per_kg": material.price_cny_per_kg,
             "price_source": (price_sources or {}).get(material.key, "static"),
             "tolerance": tol["label"] if tol else None,
+            "surface_finish": feat.surface["label"] if feat.surface else None,
             "holes": [
                 {
                     "diameter_mm": h.diameter_mm,
