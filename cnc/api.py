@@ -15,9 +15,7 @@ Celery worker instead of doing it inline.
 """
 from __future__ import annotations
 
-import base64
 import hashlib
-import json
 import logging
 import os
 import threading
@@ -27,8 +25,7 @@ from pathlib import Path
 
 log = logging.getLogger("cnc")
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, store
@@ -47,8 +44,6 @@ from .geometry.parser import (
     parse_bytes,
 )
 from .pricing import apply_market_prices, get_price_service
-from .quote import build_quote_pdf
-from .service import QuoteError, QuoteRequest, build_quote
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _VERSION = "0.3.0"   # keep in sync with pyproject.toml

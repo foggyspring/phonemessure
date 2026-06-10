@@ -124,14 +124,18 @@ def _derive(cutting: dict, key: str) -> tuple[dict, dict]:
     tools = {
         "rough_endmill_d_mm": Dr, "rough_stepover_frac": t["rough"]["stepover_frac"],
         "finish_endmill_d_mm": Df, "finish_stepover_mm": t["finish"]["stepover_mm"],
-        "rapid_mm_min": t["rapid_mm_min"], "retract_mm": t["retract_mm"],
-        "hole_approach_s": t.get("hole_approach_s", 4.0),
-        "peck_trigger_ratio": t.get("peck_trigger_ratio", 3.0),
-        "peck_depth_ratio": t.get("peck_depth_ratio", 1.0),
-        "deep_feed_derate": t.get("deep_feed_derate", 0.75),
-        "peck_overhead_s": t.get("peck_overhead_s", 0.4),
-        "point_allowance_ratio": t.get("point_allowance_ratio", 0.3),
-        "tap_pitch_fallback_ratio": t.get("tap_pitch_fallback_ratio", 0.15),
+        "rapid_mm_min": max(float(t["rapid_mm_min"]), 1.0),
+        "retract_mm": max(float(t["retract_mm"]), 0.0),
+        # Clamp the cycle knobs at the single derivation point: an operator typo
+        # (e.g. a negative derate) must never produce NEGATIVE cutting time —
+        # same precedent as the scrap_credit_frac clamp in costing.
+        "hole_approach_s": max(float(t.get("hole_approach_s", 4.0)), 0.0),
+        "peck_trigger_ratio": max(float(t.get("peck_trigger_ratio", 3.0)), 0.0),
+        "peck_depth_ratio": max(float(t.get("peck_depth_ratio", 1.0)), 0.01),
+        "deep_feed_derate": min(max(float(t.get("deep_feed_derate", 0.75)), 0.05), 1.0),
+        "peck_overhead_s": max(float(t.get("peck_overhead_s", 0.4)), 0.0),
+        "point_allowance_ratio": min(max(float(t.get("point_allowance_ratio", 0.3)), 0.0), 5.0),
+        "tap_pitch_fallback_ratio": min(max(float(t.get("tap_pitch_fallback_ratio", 0.15)), 0.01), 1.0),
     }
     return cut, tools
 

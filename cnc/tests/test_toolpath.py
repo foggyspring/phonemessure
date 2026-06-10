@@ -186,3 +186,18 @@ def test_high_poly_mesh_downgrades_to_analytic():
     plan, info = estimators.make_plan(feat, shop.material("AL6061"), shop, backend="auto", mesh_stl=sb)
     assert time.time() - t0 < 5.0
     assert info["used"] == "analytic"
+
+
+def test_cycle_param_overrides_are_clamped_sane():
+    # an operator typo (negative derate, zero rapid) must never produce
+    # negative or NaN cutting time — clamps live at the single _derive seam.
+    cutting = tp._load_cutting({"tools": {"deep_feed_derate": -1, "rapid_mm_min": 0,
+                                          "peck_depth_ratio": -5}})
+    cut, tools = tp._derive(cutting, "AL6061")
+    assert tools["deep_feed_derate"] == 0.05       # floored, not negative
+    assert tools["rapid_mm_min"] >= 1.0
+    assert tools["peck_depth_ratio"] >= 0.01
+    m = metrics_from_stl_bytes(cube_stl(50.0))
+    t, _, _ = tp._simulate_drilling(
+        analyze(m, holes=[Hole(diameter_mm=6.0, depth_mm=35.0, count=2)]), cut, tools)
+    assert t > 0                                    # never negative time
