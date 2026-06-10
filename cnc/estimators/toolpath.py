@@ -54,18 +54,22 @@ _CUTTING_OVERRIDABLE = {
 }
 
 
-def _load_cutting() -> dict:
+def _load_cutting(overrides: dict | None = None) -> dict:
+    """Handbook feeds/speeds from JSON, with explicit runtime overrides applied.
+
+    Pure of persistence: the caller (API layer) supplies the override dict —
+    the estimator no longer reads SQLite behind the planner's back (which was
+    both a layering violation and a hidden DB hit on every quote).
+    """
     cut = json.loads(_CUTTING_PATH.read_text("utf-8"))
-    # apply any runtime feeds/speeds overrides (kind="cutting", key=material)
-    try:
-        from .. import store
-        for mat, fields in (store.get_overrides().get("cutting") or {}).items():
-            if mat in cut.get("materials", {}):
-                for f, v in fields.items():
-                    if f in _CUTTING_OVERRIDABLE:
+    for mat, fields in (overrides or {}).items():
+        if mat in cut.get("materials", {}):
+            for f, v in fields.items():
+                if f in _CUTTING_OVERRIDABLE:
+                    try:
                         cut["materials"][mat][f] = float(v)
-    except Exception:
-        pass
+                    except (TypeError, ValueError):
+                        continue
     return cut
 
 

@@ -103,8 +103,9 @@ def set_price(body: dict, _admin: dict = Depends(require_admin)) -> dict:
             raise HTTPException(status_code=400, detail=f"field '{field}' not a maintainable capp param")
         key = key or "capp"
     elif kind == "cutting":
-        from ..estimators.toolpath import _CUTTING_OVERRIDABLE, _load_cutting
-        cut = _load_cutting()
+        from ..api import effective_cutting
+        from ..estimators.toolpath import _CUTTING_OVERRIDABLE
+        cut = effective_cutting()
         if key not in cut.get("materials", {}):
             raise HTTPException(status_code=404, detail=f"unknown cutting material '{key}'")
         if field not in _CUTTING_OVERRIDABLE:
@@ -135,14 +136,15 @@ def admin_config(_admin: dict = Depends(require_admin)) -> dict:
     from ..engine.shopdata import (
         _BUSINESS_NESTED, _BUSINESS_OVERRIDABLE, _CAPP_OVERRIDABLE, _OVERRIDE_FIELDS,
     )
-    from ..estimators.toolpath import _CUTTING_OVERRIDABLE, _load_cutting
+    from ..api import effective_cutting
+    from ..estimators.toolpath import _CUTTING_OVERRIDABLE
     shop, _ = _effective_shop()
     biz = shop.business
     tiers = {arr: [{"key": el.get("key"), "label": el.get("label", el.get("key")),
                     **{s: el.get(s) for s in subs}}
                    for el in (biz.get(arr) or [])]
              for arr, subs in _BUSINESS_NESTED.items()}
-    cut = _load_cutting()
+    cut = effective_cutting()
     return {
         "materials": {k: {"label": m.label,
                           **{f: getattr(m, f) for f in sorted(_OVERRIDE_FIELDS["material"])}}

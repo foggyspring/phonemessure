@@ -8,7 +8,13 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from .. import store
-from ..api import _effective_shop, _metrics_from_request, _metrics_payload, _read_capped
+from ..api import (
+    _effective_shop,
+    _metrics_from_request,
+    _metrics_payload,
+    _read_capped,
+    effective_cutting,
+)
 from ..quote import build_quote_pdf
 from ..service import QuoteError, QuoteRequest, build_quote
 
@@ -64,7 +70,8 @@ async def quote(
         payload = build_quote(
             metrics, req, shop=eff_shop, mesh_stl=mesh_stl,
             backend=str(p.get("backend", "auto")), price_sources=price_sources,
-            calibration_factors=store.time_factors(), compare=bool(p.get("compare")),
+            calibration_factors=store.time_factors(), cutting=effective_cutting(),
+            compare=bool(p.get("compare")),
         )
     except QuoteError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

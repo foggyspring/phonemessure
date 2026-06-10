@@ -205,3 +205,18 @@ def test_all_process_params_maintainable(client):
     assert P(kind="business", key="", field="lead_time_tiers.express.label", value=1) == 400
     assert P(kind="capp", key="", field="margin", value=1) == 400
     assert P(kind="cutting", key="AL6061", field="bogus", value=1) == 400
+
+
+def test_cutting_override_flows_into_quote(client):
+    # the estimator no longer reads the DB itself — the API layer must thread
+    # overridden feeds into the plan, or this silently regresses.
+    import trimesh
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    sb = trimesh.creation.box((60, 40, 20)).export(file_type="stl")
+    quote = lambda: client.post("/api/quote", files={"file": ("p.stl", sb)},
+                                data={"params": '{"material":"AL6061","quantity":5}'}).json()
+    base = quote()["plan"]["times"]["roughing_min"]
+    client.put("/api/admin/price", headers=h, json={
+        "kind": "cutting", "key": "AL6061", "field": "vc_rough", "value": 30})  # crawl speed
+    slow = quote()["plan"]["times"]["roughing_min"]
+    assert slow > base * 2          # slower cutting speed → much longer roughing

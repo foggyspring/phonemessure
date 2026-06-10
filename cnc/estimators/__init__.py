@@ -40,6 +40,7 @@ def make_plan(
     machine_key: str | None = None,
     mesh_stl: bytes | None = None,
     unit_scale: float = 1.0,
+    cutting: dict | None = None,
 ) -> tuple[ProcessPlan, dict]:
     """Return (ProcessPlan, info). info = {requested, used, fallback_reason?}."""
     info = {"requested": backend, "used": "analytic"}
@@ -48,7 +49,8 @@ def make_plan(
     if want_toolpath and mesh_stl and _toolpath.available():
         try:
             mesh = _toolpath.load_mesh(mesh_stl, scale=unit_scale)
-            plan = _toolpath.plan_toolpath(feat, material, shop, mesh, machine_key=machine_key)
+            plan = _toolpath.plan_toolpath(feat, material, shop, mesh, machine_key=machine_key,
+                                           cutting=cutting)
             info["used"] = "toolpath"
             return plan, info
         except Exception as exc:

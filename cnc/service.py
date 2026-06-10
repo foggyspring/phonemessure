@@ -186,6 +186,7 @@ def build_quote(
     backend: str = "auto",
     price_sources: dict | None = None,
     calibration_factors: dict | None = None,
+    cutting: dict | None = None,
     compare: bool = False,
 ) -> dict:
     shop = shop or load()
@@ -286,7 +287,7 @@ def build_quote(
     plan, backend_info = estimators.make_plan(
         feat, material, shop,
         backend=backend, machine_key=req.machine, mesh_stl=mesh_stl,
-        unit_scale=unit_scale,
+        unit_scale=unit_scale, cutting=cutting,
     )
 
     # Calibration: scale the estimate by the factor learned from real cycle

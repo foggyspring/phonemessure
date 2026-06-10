@@ -63,6 +63,13 @@ def _effective_shop() -> tuple[ShopData, dict]:
     return shop, sources
 
 
+def effective_cutting() -> dict:
+    """Feeds/speeds with runtime overrides applied — resolved here (API layer)
+    so the estimator stays pure of persistence."""
+    from .estimators.toolpath import _load_cutting
+    return _load_cutting(store.get_overrides().get("cutting"))
+
+
 def _current_value(kind: str, key: str, field: str, base_shop):
     """Effective value of a (kind,key,field) before a change, for audit trails.
 
@@ -82,8 +89,7 @@ def _current_value(kind: str, key: str, field: str, base_shop):
         if kind == "capp":
             return base_shop.capp.get(field)
         if kind == "cutting":
-            from .estimators.toolpath import _load_cutting
-            return _load_cutting().get("materials", {}).get(key, {}).get(field)
+            return effective_cutting().get("materials", {}).get(key, {}).get(field)
     except Exception:
         return None
     return None
