@@ -82,6 +82,57 @@ async def ai_chat(
     return JSONResponse(run_agent(str(message), ctx, history=hist))
 
 
+@router.post("/api/ai/research")
+async def ai_research(
+    request: Request,
+    message: str = Form(""),
+    params: str = Form("{}"),
+    state: str = Form("{}"),
+    file: UploadFile | None = File(None),
+    authorization: str | None = Header(default=None),
+) -> JSONResponse:
+    """One step of the guided research flow (需求澄清→DFM→选材→批量→简报).
+
+    The flow state travels with the request — stateless server, same pattern as
+    chat history. Same throttles/cost guard as free chat."""
+    from ..ai.research import step
+    from ..ai.tools import AgentContext
+    ip = request.client.host if request.client else "unknown"
+    if _ai_throttled(ip):
+        raise HTTPException(status_code=429, detail="AI 请求过于频繁，请稍后再试。")
+    _ai_cost_guard(ip, authorization)
+    message = str(message)
+    if len(message) > _AI_MSG_MAX:
+        raise HTTPException(status_code=400, detail=f"消息过长（>{_AI_MSG_MAX} 字）。")
+    try:
+        p = json.loads(params) if params else {}
+        st = json.loads(state) if state else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"bad params/state: {exc}") from exc
+    if not isinstance(p, dict) or not isinstance(st, dict):
+        raise HTTPException(status_code=400, detail="params/state must be JSON objects")
+
+    metrics = mesh_stl = None
+    if file is not None:
+        data = _read_capped(file)
+        try:
+            metrics, extra = _metrics_from_request(data, file.filename, None)
+            if extra.get("preview_stl_b64"):
+                mesh_stl = base64.b64decode(extra["preview_stl_b64"])
+            elif file.filename and file.filename.lower().endswith(".stl"):
+                mesh_stl = data
+        except (GeometryError, KernelUnavailable):
+            metrics = None
+
+    tok = auth.bearer_from_header(authorization)
+    is_admin = bool(tok and auth.verify_token(store.get_secret(), tok))
+    shop, sources = _effective_shop()
+    ctx = AgentContext(shop=shop, metrics=metrics, mesh_stl=mesh_stl, params=p,
+                       price_sources=sources, calibration_factors=store.time_factors(),
+                       is_admin=is_admin)
+    return JSONResponse(step(message, st or None, ctx))
+
+
 @router.post("/api/ai/approve")
 def ai_approve(body: dict, _admin: dict = Depends(require_admin)) -> dict:
     """Execute an AI-proposed write action after explicit admin approval."""

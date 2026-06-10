@@ -651,7 +651,10 @@ function appendAITyping() {
 async function sendAI() {
   const text = $("ai-text").value.trim();
   if (!text || aiState.busy) return;
-  aiState.busy = true; $("ai-text").value = "";
+  $("ai-text").value = "";
+  // research mode owns the conversation until the flow ends or user exits
+  if (aiState.research) return sendResearch(text);
+  aiState.busy = true;
   appendAIMsg("user", text);
   const typing = appendAITyping();
   try {
@@ -668,6 +671,66 @@ async function sendAI() {
     if (d.pending) renderAIPending(d.pending);
     aiState.history = d.history || aiState.history;
     saveAISession();
+  } catch (e) {
+    typing.remove(); appendAIMsg("bot", "网络错误：" + e.message);
+  } finally { aiState.busy = false; }
+}
+
+// ──────────────── guided research flow (analytical partner) ────────────────
+function startResearch() {
+  aiState.research = { state: {} };
+  openAIPanel();
+  appendAIMsg("bot", "已进入研究模式：我会按 需求澄清 → 几何/DFM → 选材 → 批量/交期 → 决策简报 引导分析。随时回复“退出研究”返回自由问答。");
+  sendResearch("开始研究");
+}
+
+function renderResearchProgress(prog) {
+  const el = $("ai-progress");
+  if (!el) return;
+  if (!prog) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  el.classList.remove("hidden");
+  el.innerHTML = prog.stages.map((s, i) =>
+    `<span class="ai-stage${s.done ? " done" : ""}${i + 1 === prog.current ? " on" : ""}">${esc(s.label)}</span>`
+  ).join('<span class="ai-stage-sep">→</span>');
+}
+
+function renderNextSteps(steps) {
+  if (!steps || !steps.length) return;
+  const d = document.createElement("div");
+  d.className = "ai-msg ai-bot ai-next";
+  d.innerHTML = `<span class="muted tiny">下一步建议：</span>` + steps.map((s) =>
+    `<button class="ai-chip" data-research-q="${esc(s.message)}">${esc(s.label)}</button>`).join(" ");
+  $("ai-messages").appendChild(d);
+  $("ai-messages").scrollTop = $("ai-messages").scrollHeight;
+}
+
+async function sendResearch(text) {
+  if (aiState.busy) return;
+  if (/退出研究|退出|exit/i.test(text)) {
+    aiState.research = null; renderResearchProgress(null);
+    appendAIMsg("bot", "已退出研究模式，回到自由问答。");
+    return;
+  }
+  aiState.busy = true;
+  appendAIMsg("user", text);
+  const typing = appendAITyping();
+  try {
+    const fd = new FormData();
+    fd.append("message", text);
+    fd.append("params", JSON.stringify(buildParams(false)));
+    fd.append("state", JSON.stringify(aiState.research.state || {}));
+    if (state.file) fd.append("file", state.file);
+    const r = await fetch("/api/ai/research", { method: "POST", headers: authHeaders(), body: fd });
+    const d = await r.json();
+    typing.remove();
+    if (!r.ok) { appendAIMsg("bot", "研究步骤失败：" + (d.detail || r.statusText)); return; }
+    aiState.research.state = d.state || {};
+    renderResearchProgress(d.progress);
+    appendAIMsg("bot", d.reply || "");
+    renderNextSteps(d.next_steps);
+    if (d.done) {
+      aiState.research = null;   // flow complete; chips still work via data-research-q
+    }
   } catch (e) {
     typing.remove(); appendAIMsg("bot", "网络错误：" + e.message);
   } finally { aiState.busy = false; }
@@ -793,7 +856,16 @@ function initAI() {
   });
   $("ai-messages").addEventListener("click", (e) => {
     const chip = e.target.closest(".ai-chip");
-    if (chip) { $("ai-text").value = chip.dataset.q; sendAI(); }
+    if (!chip) return;
+    if (chip.id === "ai-research-btn") { startResearch(); return; }
+    const rq = chip.dataset.researchQ;
+    if (rq) {
+      if (/重新开始|重新研究/.test(rq)) { startResearch(); return; }
+      if (aiState.research) { sendResearch(rq); }
+      else { $("ai-text").value = rq; sendAI(); }   // post-brief chips → free chat
+      return;
+    }
+    if (chip.dataset.q) { $("ai-text").value = chip.dataset.q; sendAI(); }
   });
   loadAIStatus();
 }
