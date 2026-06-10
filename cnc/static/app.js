@@ -389,8 +389,11 @@ function scheduleLiveQuote() {
   liveTimer = setTimeout(() => requestQuote(false), 420);
 }
 
+let quoteSeq = 0;   // discard out-of-order responses: a slow earlier quote must
+                    // not overwrite a newer one (stale price + stale PDF export)
 async function requestQuote(save) {
   if (!(state.geometry || manualDims())) return;
+  const seq = ++quoteSeq;
   const btn = $("quote-btn");
   if (save) btn.classList.add("loading");
   try {
@@ -398,12 +401,15 @@ async function requestQuote(save) {
     fd.append("params", JSON.stringify(buildParams(save)));
     if (state.file) fd.append("file", state.file);
     const res = await fetch("/api/quote", { method: "POST", body: fd });
+    if (seq !== quoteSeq) return;          // a newer request superseded this one
     if (!res.ok) {
       const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
       toast("报价失败：" + detail, "err", 6000);
       return;
     }
-    state.lastPayload = await res.json();
+    const payload = await res.json();
+    if (seq !== quoteSeq) return;
+    state.lastPayload = payload;
     state.hasQuoted = true;
     renderResult(state.lastPayload, !save);
     $("live-hint").hidden = false;
@@ -422,6 +428,9 @@ const money = (v, cur = "CNY") => {
   const fx = state.fx || { rate: 1, symbol: "¥" };
   return fx.symbol + fmtNum(Number(v) * fx.rate);
 };
+// Stored amounts are always CNY; history rows must not be converted by whatever
+// display FX the last rendered quote happened to set.
+const moneyCNY = (v) => "¥" + fmtNum(Number(v));
 function kv(rows) { return rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join(""); }
 
 function countUp(el, from, to, cur) {
@@ -433,15 +442,6 @@ function countUp(el, from, to, cur) {
     if (k < 1) requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
-}
-
-const DFM_RULES = [
-  { re: /风险|变形|断丝|过小|振动|啄钻|peck/i, level: "warn", ico: "" },
-  { re: /无法|不可|超限|必须/i, level: "danger", ico: "" },
-];
-function classifyDFM(text) {
-  for (const r of DFM_RULES) if (r.re.test(text)) return r;
-  return { level: "info", ico: "" };
 }
 
 function renderResult(p, isLive) {
@@ -547,7 +547,8 @@ function renderResult(p, isLive) {
   const noteHtml = notes.map((n) => `<li class="info"><span class="w-ico">·</span><span class="muted">${esc(n)}</span></li>`).join("");
   $("warn-list").innerHTML = (sumHtml + dfmHtml + noteHtml) ||
     `<li class="info"><span>无明显可加工性风险 No DFM flags</span></li>`;
-  if (dfm.length) $("warn-card").querySelector("h3").textContent =
+  // set unconditionally: a risk-free follow-up quote must clear the old suffix
+  $("warn-card").querySelector("h3").textContent =
     hasRisk ? "工艺提示 Notes & DFM（有风险）" : "工艺提示 Notes & DFM";
 
   const assume = p.assumptions || [];
@@ -693,7 +694,10 @@ async function approveAI(pending) {
 }
 
 function applyAIQuote(args) {
-  if (args.material) { $("material").value = args.material; recolorMesh(args.material); }
+  if (args.material) {
+    $("material").value = args.material; recolorMesh(args.material);
+    refreshFinishes();   // material change re-scopes valid finishes; a stale
+  }                      // list silently no-ops args.finish or 400s the quote
   if (args.quantity) $("quantity").value = args.quantity;
   if (args.tolerance) $("tolerance").value = args.tolerance;
   if (args.surface_finish) $("surface_finish").value = args.surface_finish;
@@ -759,8 +763,6 @@ function renderCompare(p) {
   const rows = p.material_comparison;
   state.compare = false;                 // one-shot; don't slow later quotes
   if (!rows) { el.innerHTML = ""; return; }
-  const cur = (state.fx || {}).symbol || "¥";
-  const cheapest = rows[0] && rows[0].key;
   el.innerHTML = `<div class="lead-title" style="margin-top:12px">材料对比 Material comparison（按单价）</div>` +
     `<table class="tiers"><tr><th>材料</th><th>单价</th><th>密度</th><th>可加工性</th></tr>` +
     rows.map((r) => `<tr${r.key === $("material").value ? ' class="active"' : ""}>
@@ -810,6 +812,7 @@ function renderMaterialSuggestions(p) {
     }).join(" ");
   el.querySelectorAll(".suggest-chip").forEach((b) => b.addEventListener("click", () => {
     $("material").value = b.dataset.mat;
+    refreshFinishes();   // re-scope finishes or the old material's pick can 400
     updateMatPrice(); recolorMesh(b.dataset.mat); requestQuote(true);
   }));
 }
@@ -819,17 +822,18 @@ function renderLeadOptions(q, isLive) {
   const el = $("lead-opts");
   const opts = q.lead_time_options || [];
   if (!opts.length) { el.innerHTML = ""; return; }
+  // Chips stay clickable on live renders too — a chip click re-renders live
+  // (isLive=true), so disabling here made tier selection one-shot.
   el.innerHTML = `<div class="lead-title">交期选项 Delivery</div>` +
     `<div class="lead-chips">` + opts.map((o) =>
-      `<button class="lead-chip${o.selected ? " on" : ""}" data-lead="${esc(o.key)}"${isLive ? " disabled" : ""}>
+      `<button class="lead-chip${o.selected ? " on" : ""}" data-lead="${esc(o.key)}">
          <span class="lead-name">${esc(o.label)}</span>
          <span class="lead-days">${o.days} 天${o.delivery_date ? ` · ${o.delivery_date}` : ""}</span>
          <span class="lead-price">${money(o.unit_price_cny, q.currency)}/件</span>
        </button>`).join("") + `</div>`;
   el.querySelectorAll(".lead-chip").forEach((b) => b.addEventListener("click", () => {
-    const key = b.dataset.lead;
-    state.leadTime = key;
-    requestQuote(false);   // re-quote with the chosen tier (saved quote)
+    state.leadTime = b.dataset.lead;
+    requestQuote(false);   // live re-quote with the chosen tier
   }));
 }
 
@@ -886,7 +890,7 @@ async function loadHistory() {
     tr.innerHTML =
       `<td>${esc(r.part_name || "part")}<div class="h-id">${esc(r.id)}</div></td>` +
       `<td>${r.material} × ${r.quantity}<br><span class="muted tiny">${when}</span></td>` +
-      `<td class="h-price">${money(r.unit_price, r.currency || "CNY")}</td>` +
+      `<td class="h-price">${moneyCNY(r.unit_price)}</td>` +
       `<td class="h-pdf"><a href="/api/quotes/${r.id}/pdf" target="_blank" rel="noopener">PDF</a></td>`;
     tr.addEventListener("click", (e) => { if (e.target.tagName !== "A") reopenQuote(r.id); });
     tb.appendChild(tr);
@@ -1041,8 +1045,7 @@ async function openAdmin() {
   };
   fieldRows($("admin-materials"), "material", cfg.materials, true);
   fieldRows($("admin-machines"), "machine", cfg.machines, false);
-  const finishes = Object.fromEntries(Object.entries(cfg.finishes || {}));
-  fieldRows($("admin-finishes"), "finish", finishes, true);
+  fieldRows($("admin-finishes"), "finish", cfg.finishes || {}, true);
   const bg = $("admin-business"); bg.innerHTML = "";
   for (const [k, v] of Object.entries(cfg.business || {}))
     adminRow(bg, BIZ_LABELS[k] || k, "business", "", k, v, k.includes("rate") || k === "margin" ? 0.01 : 1);
@@ -1085,6 +1088,7 @@ async function saveAdmin() {
   if (!changed.length) { toast("没有改动", "info"); closeAdmin(); return; }
   $("admin-save").classList.add("loading");
   try {
+    const failures = [];
     for (const i of changed) {
       const r = await fetch("/api/admin/price", {
         method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
@@ -1094,10 +1098,17 @@ async function saveAdmin() {
         closeAdmin(); logout(); toast("登录已过期，请重新登录", "err"); openLogin();
         return;
       }
+      if (!r.ok) {   // a 400 (e.g. out-of-range value) must not toast as success
+        const detail = (await r.json().catch(() => ({}))).detail || r.statusText;
+        failures.push(`${i.dataset.key || i.dataset.kind}/${i.dataset.field}: ${detail}`);
+      }
     }
     await loadShop();
     closeAdmin();
-    toast(`已更新 ${changed.length} 项价格`, "ok");
+    if (failures.length)
+      toast(`已更新 ${changed.length - failures.length} 项，${failures.length} 项被拒绝：${failures.join("；")}`, "err", 8000);
+    else
+      toast(`已更新 ${changed.length} 项价格`, "ok");
     if (state.hasQuoted) requestQuote(false);
   } catch (e) {
     toast("保存失败：" + e.message, "err");
@@ -1109,7 +1120,9 @@ function toast(msg, kind = "info", ttl = 3200) {
   const wrap = $("toast-wrap");
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
-  el.innerHTML = `<span class="t-dot"></span><span>${msg}</span>`;
+  // esc(): server error details echo user input (e.g. the uploaded *filename*
+  // in "unsupported file type") — an innerHTML sink here would be reflected XSS.
+  el.innerHTML = `<span class="t-dot"></span><span>${esc(String(msg))}</span>`;
   wrap.appendChild(el);
   setTimeout(() => { el.classList.add("fade-out"); setTimeout(() => el.remove(), 350); }, ttl);
 }

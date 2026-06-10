@@ -282,7 +282,6 @@ table.tiers td { border-bottom: 1px solid #1c232c; font-variant-numeric: tabular
 }
 .warn-list li.info { border-left-color: var(--accent); }
 .warn-list li.warn { border-left-color: var(--warn); background: rgba(210,153,34,.08); }
-.warn-list li.danger { border-left-color: var(--danger); background: rgba(248,81,73,.08); }
 .warn-list li .w-ico { flex: none; font-size: 14px; line-height: 1.4; }
 
 /* ---------- history ---------- */
@@ -418,7 +417,6 @@ table.hist .h-id { color: var(--muted2); font-family: ui-monospace, "SF Mono", m
   box-shadow: 0 6px 22px rgba(47,129,247,.45); transition: transform .15s, box-shadow .15s;
 }
 .ai-fab:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(47,129,247,.55); }
-.ai-fab span { font-weight: 600; }
 .ai-panel {
   position: fixed; top: 0; right: 0; height: 100vh; width: min(420px, 96vw); z-index: 50;
   display: flex; flex-direction: column; background: var(--bg2);
