@@ -194,3 +194,20 @@ def test_round2_knowledge_entries_route_correctly():
     # specific hole-machining intent outranks the fits table when both match
     t = _ask("H7的孔怎么加工")
     assert "钻孔" in t.text and "铰" in t.text
+
+
+def test_round3_knowledge_entries_route_correctly():
+    # turning L/D / thread-mill-vs-tap / counterbore / metrology 10:1
+    cases = {
+        "细长轴怎么车": "L/D",
+        "盲孔螺纹老断丝锥怎么办": "螺纹铣",
+        "M6沉头孔多大": "Ø11",
+        "卡尺能测±0.05吗": "10:1",
+    }
+    for q, fact in cases.items():
+        t = _ask(q)
+        assert not t.tool_calls and fact in t.text, (q, t.text[:50])
+    # quote intents with bare 车削/攻丝 words still go to the quote tool
+    for q in ("这个车削件多少钱", "攻丝4个孔报价"):
+        t = _ask(q)
+        assert any(c.name == "get_quote" for c in t.tool_calls), q

@@ -564,6 +564,87 @@
       "builtin": true,
       "enabled": true,
       "response": "惯例：图纸总注'未注倒角 C0.5'(0.5mm×45°)即要求所有锐边倒钝;C1=1mm×45°。去毛刺(deburr)是修正性的,无定形要求,目的是安全与防应力集中;倒角(chamfer)是有尺寸的加工特征,用于导向/装配。本系统金属件报价已含常规去毛刺/倒钝费,有定形倒角请在模型里画出或注明。"
+    },
+    {
+      "key": "faq_turning",
+      "name": "车削细长轴",
+      "kind": "knowledge",
+      "triggers": [
+        "细长轴",
+        "车削注意",
+        "车削设计",
+        "顶尖",
+        "跟刀架",
+        "车槽",
+        "轴太长",
+        "l/d"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "车削装夹经验法则(L/D=长径比)：仅卡盘 L/D<3(降参数可到 5)；加尾座顶尖 3-6(可到 10)；跟刀架/中心架 6-12(可到 20)。细径轴更敏感——顶尖压力过大会顶弯,过小会打滑颤振。车床带动力刀塔可直接铣平面/槽/钻横孔,省二次装夹。外圆槽最小宽约 1.2mm(铝/黄铜可 0.5mm)。"
+    },
+    {
+      "key": "faq_thread_mill",
+      "name": "螺纹铣还是攻丝",
+      "kind": "knowledge",
+      "triggers": [
+        "螺纹铣",
+        "攻丝还是",
+        "丝锥断",
+        "断丝锥",
+        "大螺纹",
+        "盲孔螺纹",
+        "thread mill"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "攻丝快且便宜,适合常规通孔小螺纹;以下情况改螺纹铣：1) 硬料(>40HRC、钛、Inconel)——丝锥扭矩随硬度激增易崩断;2) 盲孔——排屑差是断锥重灾区,螺纹铣可控深度;3) 大径(M36+)——攻丝扭矩超机床能力;4) 贵重件——断丝锥报废零件,断螺纹铣刀不会。一把螺纹铣刀还可加工多种规格,小批量更省。"
+    },
+    {
+      "key": "faq_counterbore",
+      "name": "沉头孔规格",
+      "kind": "knowledge",
+      "triggers": [
+        "沉头",
+        "沉孔",
+        "锪孔",
+        "counterbore",
+        "countersink",
+        "内六角沉"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "内六角圆柱头(SHCS)沉孔惯例：沉孔径≈1.5×公称、深≈头高(=公称)。常用：M3 通孔Ø3.4/沉孔Ø6.5×3.4深;M4 Ø4.5/Ø8×4.4;M5 Ø5.5/Ø9.5×5.4;M6 Ø6.6/Ø11×6.5;M8 Ø9/Ø14×8.6。沉头(平头)螺钉用 90° 锥沉,如 M6 锥口约 Ø13.7。建模时直接画规格沉孔,避免车间猜。"
+    },
+    {
+      "key": "faq_metrology",
+      "name": "量具与检测能力",
+      "kind": "knowledge",
+      "triggers": [
+        "卡尺",
+        "千分尺",
+        "三坐标",
+        "测量精度",
+        "量具",
+        "怎么测",
+        "10比1",
+        "cmm"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "选量具用 10:1 法则——量具分辨率应为被测公差的 1/10。卡尺(0.02mm 级)只够 ±0.1 标准公差;±0.05 以内要千分尺(0.001mm 级);形位公差/位置度/复杂轮廓需三坐标(CMM,µm 级)。这正是紧公差贵的原因之一:不只难加工,还要更高级的检测手段与工时。"
     }
   ]
 }
