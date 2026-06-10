@@ -338,7 +338,7 @@ def build_quote(
                       wall_auto=auto_wall is not None, holes_auto=holes_auto,
                       watertight=mesh_watertight,
                       tol_mm=float(tol["tol_mm"]) if tol and tol.get("tol_mm") else None,
-                      machinability=material.machinability)
+                      machinability=material.machinability, finish_key=finish.key)
 
     return {
         "input": {

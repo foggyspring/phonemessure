@@ -169,3 +169,21 @@ def test_hard_material_tapping_warns_thread_milling():
     ti2 = build_quote(metrics_from_stl_bytes(cube_stl(50.0)),
                       QuoteRequest(material="TITANIUM_TC4", quantity=2))
     assert not any(d["code"] == "hard_tap" for d in ti2["dfm"])
+
+
+def test_anodize_coating_vs_tight_tolerance_warns():
+    m = metrics_from_stl_bytes(cube_stl(50.0))
+    # ultra tolerance + anodize → the coating eats the band; must warn
+    q = build_quote(m, QuoteRequest(material="AL6061", quantity=5,
+                                    tolerance="ultra", finish="anodize_clear"))
+    assert any(d["code"] == "finish_dim" for d in q["dfm"])
+    # hardcoat exists as a finish and grows much more per side
+    qh = build_quote(m, QuoteRequest(material="AL6061", quantity=5,
+                                     tolerance="precision", finish="hard_anodize"))
+    f = next(d for d in qh["dfm"] if d["code"] == "finish_dim")
+    assert "25µm" in f["detail"]
+    # standard tolerance + anodize → no nag; tight tolerance + bare → no nag
+    assert not any(d["code"] == "finish_dim" for d in build_quote(
+        m, QuoteRequest(material="AL6061", quantity=5, finish="anodize_clear"))["dfm"])
+    assert not any(d["code"] == "finish_dim" for d in build_quote(
+        m, QuoteRequest(material="AL6061", quantity=5, tolerance="ultra"))["dfm"])

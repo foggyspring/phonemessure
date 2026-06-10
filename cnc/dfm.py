@@ -49,6 +49,7 @@ def analyze_dfm(
     watertight: bool = True,
     tol_mm: float | None = None,
     machinability: float = 1.0,
+    finish_key: str = "none",
 ) -> list[dict]:
     out: list[dict] = []
     dims = sorted(metrics.dims_mm)
@@ -204,6 +205,17 @@ def analyze_dfm(
                           f"在最长边 {longest:.0f}mm 上要求 ±{tol_mm:g}mm，"
                           f"常规精密三轴可达约 ±{achievable:.3f}mm，难稳定保证。",
                           "放宽非关键尺寸公差，或改恒温间/精密机床并预留检测成本。"))
+
+    # ---- anodize coating thickness vs tight tolerance (MIL-A-8625) ----
+    # Type II grows ~5µm/side (often ignorable), hardcoat ~25µm/side — against a
+    # ±0.02 band (40µm total) even Type II eats a quarter of it. The drawing
+    # must say whether dimensions apply BEFORE or AFTER coating.
+    if tol_mm and tol_mm <= 0.05 and ("anodize" in (finish_key or "")):
+        grow = 25 if "hard" in finish_key else 5
+        out.append(_f("medium", "finish_dim", "膜厚挤占公差带 Coating vs tolerance",
+                      f"阳极膜单边生长约 {grow}µm，而 ±{tol_mm:g} 公差带总宽仅 {tol_mm*2000:g}µm，"
+                      "配合面尺寸可能被膜厚吃掉。",
+                      "图纸注明按'阳极前'还是'阳极后'尺寸验收；配合面/螺纹孔考虑保护(堵孔)或预留。"))
 
     # ---- non-watertight mesh: volume (→ material cost) less reliable ----
     if not watertight:

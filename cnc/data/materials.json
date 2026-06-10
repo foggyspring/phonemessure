@@ -17,7 +17,8 @@
         "bead_blast",
         "anodize_clear",
         "anodize_color",
-        "powder_coat"
+        "powder_coat",
+        "hard_anodize"
       ]
     },
     "AL7075": {
@@ -36,7 +37,8 @@
         "bead_blast",
         "anodize_clear",
         "anodize_color",
-        "powder_coat"
+        "powder_coat",
+        "hard_anodize"
       ]
     },
     "SUS304": {
@@ -206,6 +208,13 @@
       "per_dm2_cny": 6.0,
       "min_cny": 45.0,
       "lead_days": 2
+    },
+    "hard_anodize": {
+      "label": "硬质阳极氧化 (Hardcoat Type III)",
+      "setup_cny": 80.0,
+      "per_dm2_cny": 28.0,
+      "min_cny": 120.0,
+      "lead_days": 4
     }
   }
 }
