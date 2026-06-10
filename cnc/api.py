@@ -16,12 +16,13 @@ Celery worker instead of doing it inline.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
 import threading
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from pathlib import Path
 
 log = logging.getLogger("cnc")
@@ -209,6 +210,16 @@ def _metrics_payload(m: MeshMetrics) -> dict:
     }
 
 
+# Parsed-geometry cache: the UI re-posts the SAME file on every chat message
+# and every live re-quote, paying a full parse each time (measured 1.4 s/msg on
+# a 1 MB high-poly STL). Key by content hash; tiny capacity since entries can
+# carry a multi-MB preview mesh. Results are treated as immutable (extra is
+# shallow-copied on return so callers can't poison the cache).
+_PARSE_CACHE_MAX = 8
+_parse_cache: "OrderedDict[str, tuple]" = OrderedDict()
+_parse_cache_lock = threading.Lock()
+
+
 def _metrics_from_request(
     file_bytes: bytes | None,
     filename: str | None,
@@ -219,6 +230,13 @@ def _metrics_from_request(
     Returns (metrics, extra) where extra may hold a base64 preview mesh.
     """
     if file_bytes:
+        ext = (filename or "part.stl").rsplit(".", 1)[-1].lower()
+        key = hashlib.sha1(file_bytes).hexdigest() + ":" + ext
+        with _parse_cache_lock:
+            hit = _parse_cache.get(key)
+            if hit is not None:
+                _parse_cache.move_to_end(key)
+                return hit[0], dict(hit[1])
         try:
             res = parse_bytes(filename or "part.stl", file_bytes)
         except KernelUnavailable as exc:
@@ -228,6 +246,10 @@ def _metrics_from_request(
         extra = {"source_format": res.source_format, "kernel": res.kernel}
         if res.rendered_mesh_b64:
             extra["preview_stl_b64"] = res.rendered_mesh_b64
+        with _parse_cache_lock:
+            _parse_cache[key] = (res.metrics, dict(extra))
+            while len(_parse_cache) > _PARSE_CACHE_MAX:
+                _parse_cache.popitem(last=False)
         return res.metrics, extra
 
     if manual:

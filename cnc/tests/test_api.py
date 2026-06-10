@@ -114,3 +114,22 @@ def test_quote_history_pagination_and_search(tmp_path, monkeypatch):
     assert len(cl.get("/api/quotes?limit=2&offset=2").json()["quotes"]) == 1
     s = cl.get("/api/quotes?search=SUS304").json()
     assert s["total"] == 1 and s["quotes"][0]["material"] == "SUS304"
+
+
+def test_parse_cache_serves_repeat_uploads():
+    # the UI re-posts the same file on every chat/quote; identical bytes must hit
+    # the cache instead of re-parsing.
+    import trimesh
+    from cnc import api as A
+    from starlette.testclient import TestClient
+    A._parse_cache.clear()
+    c = TestClient(A.build_app())
+    sb = trimesh.creation.box((50, 40, 20)).export(file_type="stl")
+    a = c.post("/api/parse", files={"file": ("p.stl", sb)}).json()
+    assert len(A._parse_cache) == 1
+    b = c.post("/api/parse", files={"file": ("p.stl", sb)}).json()
+    assert a["geometry"]["dims_mm"] == b["geometry"]["dims_mm"]   # same result
+    # a different file is a distinct entry (no cross-contamination)
+    sb2 = trimesh.creation.box((80, 30, 10)).export(file_type="stl")
+    c.post("/api/parse", files={"file": ("q.stl", sb2)})
+    assert len(A._parse_cache) == 2

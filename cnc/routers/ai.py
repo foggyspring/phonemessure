@@ -24,6 +24,27 @@ from ..geometry.parser import KernelUnavailable
 router = APIRouter()
 
 
+def _sanitize_history(hist: list) -> list[dict]:
+    """The history round-trips through the client — cap each entry, whitelist
+    roles, and drop junk. Without the per-entry cap a 2.5 MB history passed
+    straight through to the provider (a token-cost attack once a real LLM is
+    wired). Also avoid starting on an orphaned tool message after the tail cut.
+    """
+    out: list[dict] = []
+    for m in hist:
+        if not isinstance(m, dict) or m.get("role") not in ("user", "assistant", "tool"):
+            continue
+        e = {"role": m["role"], "content": str(m.get("content", ""))[:_AI_MSG_MAX]}
+        if m["role"] == "tool":
+            e["name"] = str(m.get("name", ""))[:64]
+            e["summary"] = str(m.get("summary", ""))[:_AI_MSG_MAX]
+        out.append(e)
+    out = out[-_AI_HISTORY_MAX:]
+    while out and out[0]["role"] == "tool":
+        out.pop(0)
+    return out
+
+
 @router.get("/api/ai/status")
 def ai_status() -> dict:
     from ..ai import get_provider
@@ -59,7 +80,7 @@ async def ai_chat(
         raise HTTPException(status_code=400, detail=f"bad params/history: {exc}") from exc
     if not isinstance(p, dict) or not isinstance(hist, list):
         raise HTTPException(status_code=400, detail="params must be object, history a list")
-    hist = hist[-_AI_HISTORY_MAX:]            # cap context window
+    hist = _sanitize_history(hist)
 
     metrics = mesh_stl = None
     if file is not None:

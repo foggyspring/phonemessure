@@ -193,3 +193,20 @@ def test_deadline_conflict_with_outsourced_finish_warns_rush():
     qstage = next(o for o in outs if o["state"]["findings"].get("quantity"))
     assert "超出约束" in qstage["reply"] and "加急" in qstage["reply"]
     assert "加急" in outs[-1]["reply"]      # brief carries the action item
+
+
+def test_chat_history_is_capped_and_sanitized(client):
+    import json
+    # a 2.5MB history must not pass through (token-cost attack with a real LLM)
+    bomb = json.dumps([{"role": "user", "content": "A" * 500000}] * 5)
+    r = client.post("/api/ai/chat", data={"message": "hi", "params": "{}", "history": bomb})
+    assert r.status_code == 200
+    chars = sum(len(m.get("content", "")) for m in r.json()["history"])
+    assert chars < 60000                       # capped per-entry + tail-limited
+    # junk roles dropped; no orphaned leading tool message
+    junk = json.dumps([{"role": "system", "content": "x"},
+                       {"role": "tool", "summary": "orphan"}, "garbage",
+                       {"role": "user", "content": "hi"}])
+    roles = [m["role"] for m in client.post(
+        "/api/ai/chat", data={"message": "hi", "params": "{}", "history": junk}).json()["history"]]
+    assert "system" not in roles and (not roles or roles[0] != "tool")

@@ -728,6 +728,12 @@ async function sendResearch(text) {
     renderResearchProgress(d.progress);
     appendAIMsg("bot", d.reply || "");
     renderNextSteps(d.next_steps);
+    // Bridge research turns into the chat history: the conversation persists
+    // with the session, and post-research free chat (a real LLM at launch)
+    // keeps the study context instead of going amnesiac about the brief.
+    aiState.history.push({ role: "user", content: text },
+                         { role: "assistant", content: d.reply || "" });
+    saveAISession();
     if (d.done) {
       aiState.research = null;   // flow complete; chips still work via data-research-q
     }
