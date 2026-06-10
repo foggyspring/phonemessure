@@ -133,3 +133,61 @@ def test_parse_cache_serves_repeat_uploads():
     sb2 = trimesh.creation.box((80, 30, 10)).export(file_type="stl")
     c.post("/api/parse", files={"file": ("q.stl", sb2)})
     assert len(A._parse_cache) == 2
+
+
+def test_batch_quote_rolls_up_as_one_order():
+    import trimesh
+    from starlette.testclient import TestClient
+
+    from cnc import api as A
+    c = TestClient(A.build_app())
+    mk = lambda d: trimesh.creation.box(d).export(file_type="stl")
+    files = [("files", ("a.stl", mk((100, 75, 25)))),
+             ("files", ("b.stl", mk((120, 90, 6)))),
+             ("files", ("bad.stl", b"garbage")),
+             ("files", ("c.stl", mk((40, 40, 40))))]
+    r = c.post("/api/quote/batch", files=files,
+               data={"params": '{"material":"AL6061","quantity":10}'})
+    assert r.status_code == 200
+    d = r.json()
+    ok = [x for x in d["parts"] if x["ok"]]
+    bad = [x for x in d["parts"] if not x["ok"]]
+    assert len(ok) == 3 and len(bad) == 1          # per-file failure isolated
+    a = d["aggregate"]
+    # one-order semantics: subtotal = Σ pre-topup line nets; tax on floored net
+    assert abs(a["subtotal_net_cny"] - sum(x["line_net_cny"] for x in ok)) < 0.01
+    assert abs(a["total_incl_tax_cny"] - round(a["net_total_cny"] * (1 + a["tax_rate"]), 2)) < 0.05
+    assert a["lead_days"] == max(x["lead_days"] for x in ok)
+    assert a["n_failed"] == 1
+    # the thin 6mm plate should flag for review (high/medium risk rollup)
+    assert a["risk_counts"]["high"] + a["risk_counts"]["medium"] >= 1
+    assert any("b.stl" in f for f in a["needs_review"])
+
+
+def test_batch_quote_min_order_topup_applies_once():
+    import trimesh
+    from starlette.testclient import TestClient
+
+    from cnc import api as A
+    c = TestClient(A.build_app())
+    # two tiny cheap parts, each alone under the ¥200 floor
+    mk = lambda: trimesh.creation.box((20, 20, 20)).export(file_type="stl")
+    files = [("files", ("t1.stl", mk())), ("files", ("t2.stl", mk()))]
+    r = c.post("/api/quote/batch", files=files,
+               data={"params": '{"material":"ABS","quantity":1}'})
+    a = r.json()["aggregate"]
+    # the floor tops up the BATCH once — never per part
+    assert a["net_total_cny"] == max(a["subtotal_net_cny"], 200.0)
+    assert a["min_order_topup_cny"] == round(max(0.0, 200.0 - a["subtotal_net_cny"]), 2)
+
+
+def test_batch_quote_file_cap():
+    import trimesh
+    from starlette.testclient import TestClient
+
+    from cnc import api as A
+    c = TestClient(A.build_app())
+    sb = trimesh.creation.box((20, 20, 20)).export(file_type="stl")
+    files = [("files", (f"p{i}.stl", sb)) for i in range(21)]
+    assert c.post("/api/quote/batch", files=files,
+                  data={"params": "{}"}).status_code == 413

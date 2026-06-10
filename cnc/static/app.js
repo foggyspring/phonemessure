@@ -250,6 +250,61 @@ function b64ToArrayBuffer(b64) {
   return bytes.buffer;
 }
 
+function handleFiles(fileList) {
+  const files = [...(fileList || [])];
+  if (!files.length) return;
+  if (files.length === 1) { handleFile(files[0]); return; }
+  batchQuote(files);
+}
+
+async function batchQuote(files) {
+  state.batchFiles = Object.fromEntries(files.map((f) => [f.name, f]));
+  const card = $("batch-card");
+  card.classList.remove("hidden");
+  $("batch-agg").textContent = `批量报价中（${files.length} 个文件）…`;
+  $("batch-table").innerHTML = "";
+  try {
+    const fd = new FormData();
+    fd.append("params", JSON.stringify(buildParams(false)));
+    files.forEach((f) => fd.append("files", f));
+    const res = await fetch("/api/quote/batch", { method: "POST", body: fd });
+    const d = await res.json();
+    if (!res.ok) { $("batch-agg").textContent = "批量报价失败：" + (d.detail || res.statusText); return; }
+    renderBatch(d);
+    card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) {
+    $("batch-agg").textContent = "网络错误：" + e.message;
+  }
+}
+
+const RISK_LABEL = { high: "高", medium: "中", low: "低", ok: "无" };
+
+function renderBatch(d) {
+  const a = d.aggregate;
+  const topup = a.min_order_topup_cny > 0 ? `（含起订补差 ¥${fmtNum(a.min_order_topup_cny)}）` : "";
+  $("batch-agg").innerHTML =
+    `${a.n_ok}/${a.n_parts} 件成功 · 净额 <b>¥${fmtNum(a.net_total_cny)}</b>${topup}` +
+    ` · 含税 <b>¥${fmtNum(a.total_incl_tax_cny)}</b> · 最长交期 ${a.lead_days} 天` +
+    ` · 总重 ${a.order_weight_kg} kg · 预估运费 ¥${fmtNum(a.shipping_cny)}${a.crated ? "（含木箱）" : ""}` +
+    (a.risk_counts.high + a.risk_counts.medium > 0
+      ? ` · <span class="warn-mark">风险 高${a.risk_counts.high}/中${a.risk_counts.medium}，建议复核：${a.needs_review.map(esc).join("、")}</span>`
+      : ` · 无明显工艺风险`);
+  let rows = `<tr><th>零件</th><th>单价</th><th>数量</th><th>小计</th><th>交期</th><th>风险</th><th>置信</th></tr>`;
+  for (const x of d.parts) {
+    rows += x.ok
+      ? `<tr class="batch-row" data-file="${esc(x.file)}"><td>${esc(x.file)}</td>` +
+        `<td>¥${fmtNum(x.unit_price_cny)}</td><td>${x.quantity}</td><td>¥${fmtNum(x.line_net_cny)}</td>` +
+        `<td>${x.lead_days} 天</td><td>${RISK_LABEL[x.risk] || x.risk}</td><td>${x.confidence}</td></tr>`
+      : `<tr><td>${esc(x.file)}</td><td colspan="6" class="muted">失败：${esc(x.error)}</td></tr>`;
+  }
+  $("batch-table").innerHTML = rows;
+  $("batch-table").querySelectorAll(".batch-row").forEach((tr) =>
+    tr.addEventListener("click", () => {
+      const f = (state.batchFiles || {})[tr.dataset.file];
+      if (f) handleFile(f);            // load the part into the single-part flow
+    }));
+}
+
 async function handleFile(file) {
   if (!file) return;
   state.file = file;
@@ -1328,12 +1383,12 @@ function wireToolbar() {
 function wireUploads() {
   const drop = $("drop"), input = $("file");
   $("drop-hint").addEventListener("click", () => input.click());
-  input.addEventListener("change", (e) => handleFile(e.target.files[0]));
+  input.addEventListener("change", (e) => handleFiles(e.target.files));
   ["dragenter", "dragover"].forEach((ev) =>
     drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
   ["dragleave", "drop"].forEach((ev) =>
     drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
-  drop.addEventListener("drop", (e) => handleFile(e.dataTransfer.files[0]));
+  drop.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
 }
 
 function main() {

@@ -49,7 +49,7 @@
           <div class="drop-hint-inner">
             <div class="icon">□</div>
             <div class="big">拖拽 / 点击上传 3D 图纸</div>
-            <div class="sub">.step · .stp · .igs · .iges · .stl &nbsp;(≤60MB)</div>
+            <div class="sub">.step · .stp · .igs · .iges · .stl &nbsp;(≤60MB) · 支持多选批量报价</div>
           </div>
         </div>
 
@@ -57,7 +57,7 @@
           <div class="spinner"></div><span>解析中…</span>
         </div>
 
-        <input id="file" type="file" accept=".step,.stp,.igs,.iges,.stl" hidden />
+        <input id="file" type="file" accept=".step,.stp,.igs,.iges,.stl" multiple hidden />
       </div>
       <div class="viewer-meta" id="viewer-meta">尚未上传文件</div>
     </section>
@@ -176,6 +176,13 @@
         </button>
         <button id="ai-analyze-btn" class="ghost-btn" style="width:100%;margin-top:8px">AI 全面分析</button>
         <p class="muted tiny center" id="live-hint" hidden>参数改动会实时预览，点按钮可存入历史</p>
+      </div>
+
+      <div class="card hidden" id="batch-card">
+        <h2>批量报价 Batch quote</h2>
+        <div class="muted tiny" id="batch-agg"></div>
+        <table class="tiers" id="batch-table"></table>
+        <p class="muted tiny">整单口径：起订额只兜底一次、运费按合并重量一票计、交期取最长件。点行可载入该零件细看。</p>
       </div>
 
       <div class="card">
