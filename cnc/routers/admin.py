@@ -163,6 +163,49 @@ def admin_config(_admin: dict = Depends(require_admin)) -> dict:
     }
 
 
+# --------------------------------------------------------- AI skill library --
+@router.get("/api/admin/skills")
+def list_skills(_admin: dict = Depends(require_admin)) -> dict:
+    """The effective skill library (defaults + runtime edits) for maintenance."""
+    from ..ai import skills as sk
+    lib = sk.load_skills(store.get_skill_overrides())
+    return {"skills": lib, "editable_fields": sorted(sk.editable_fields())}
+
+
+@router.put("/api/admin/skills")
+def save_skill(body: dict, _admin: dict = Depends(require_admin)) -> dict:
+    """Edit a builtin (editable fields only) or upsert a custom skill."""
+    from ..ai import skills as sk
+    key = str(body.get("key") or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="key required")
+    try:
+        if sk.is_builtin(key):
+            patch = {f: body[f] for f in sk.editable_fields() if f in body}
+            if not patch:
+                raise HTTPException(status_code=400, detail="no editable field provided")
+            store.save_skill(key, patch)
+            detail = f"builtin {key}: {', '.join(patch)}"
+        else:
+            normalized = sk.validate_custom(body)
+            store.save_skill(key, normalized)
+            detail = f"custom {key} ({normalized['kind']})"
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    store.add_audit(_admin.get("u", "?"), "save_skill", detail)
+    return {"ok": True, "key": key}
+
+
+@router.delete("/api/admin/skills/{key}")
+def delete_skill(key: str, _admin: dict = Depends(require_admin)) -> dict:
+    """Revert a builtin to default, or delete a custom skill."""
+    from ..ai import skills as sk
+    n = store.delete_skill(key)
+    store.add_audit(_admin.get("u", "?"), "delete_skill",
+                    f"{key} ({'reverted builtin' if sk.is_builtin(key) else 'deleted custom'}, n={n})")
+    return {"ok": True, "reverted": n, "builtin": sk.is_builtin(key)}
+
+
 @router.delete("/api/admin/price")
 def revert_price(body: dict, _admin: dict = Depends(require_admin)) -> dict:
     """Undo a price change: revert one override, or all when scope=all."""

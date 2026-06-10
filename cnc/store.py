@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS calibration_samples (
     estimated_min REAL NOT NULL,
     actual_min    REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ai_skills (
+    key         TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,      -- JSON: full custom skill, or partial patch for a builtin
+    updated_at  TEXT NOT NULL
+);
 """
 
 
@@ -212,6 +217,34 @@ def get_overrides(*, path: str | os.PathLike | None = None) -> dict:
         for r in conn.execute("SELECT kind, key, field, value FROM price_overrides"):
             out.setdefault(r["kind"], {}).setdefault(r["key"], {})[r["field"]] = r["value"]
     return out
+
+
+# ----------------------------------------------------- AI skill overrides --
+def get_skill_overrides(*, path: str | os.PathLike | None = None) -> dict:
+    """Return {key: skill-dict} of runtime skill edits/additions."""
+    out: dict[str, dict] = {}
+    with _session(path) as conn:
+        for r in conn.execute("SELECT key, data FROM ai_skills"):
+            try:
+                out[r["key"]] = json.loads(r["data"])
+            except (ValueError, TypeError):
+                continue
+    return out
+
+
+def save_skill(key: str, data: dict, *, path: str | os.PathLike | None = None) -> None:
+    with _session(path) as conn:
+        conn.execute(
+            "INSERT INTO ai_skills (key, data, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+            (key, json.dumps(data, ensure_ascii=False), _now()))
+
+
+def delete_skill(key: str, *, path: str | os.PathLike | None = None) -> int:
+    """Remove a skill override row (reverts a builtin to default, or deletes a
+    custom skill). Returns rows removed."""
+    with _session(path) as conn:
+        return conn.execute("DELETE FROM ai_skills WHERE key=?", (key,)).rowcount
 
 
 def clear_overrides(*, path: str | os.PathLike | None = None) -> None:

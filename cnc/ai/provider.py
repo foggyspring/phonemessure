@@ -85,10 +85,10 @@ class MockProvider(LLMProvider):
             text = "已完成：\n" + "\n".join(f"· {s}" for s in summaries if s)
             return AssistantTurn(text=text, done=True)
 
-        # Phase 1: plan tool calls from the latest user message.
+        # Phase 1: plan from the latest user message — DATA-DRIVEN by the skill
+        # library (data/skills.json + runtime overrides), not hardcoded intents,
+        # so operators can tune triggers / add FAQ knowledge / disable a skill.
         user = last.get("content", "") if last.get("role") == "user" else ""
-        low = user.lower()
-        calls: list[ToolCall] = []
         mat = _detect_material(user)
         qty = _detect_quantity(user)
         args = {}
@@ -97,47 +97,57 @@ class MockProvider(LLMProvider):
         if qty:
             args["quantity"] = qty
 
+        chosen, _excl = _match_skills(user, names, is_admin="set_price" in names)
+
+        # A knowledge skill answers directly (curated shop FAQ) — no tool call.
+        for s in chosen:
+            if s["kind"] == "knowledge":
+                return AssistantTurn(text=s["response"], done=True)
+
+        calls: list[ToolCall] = []
+
         def call(name, a=None):
             calls.append(ToolCall(id=f"c{len(calls)}", name=name, arguments=a or {}))
 
-        wants_explain = any(k in low for k in ["为什么", "为啥", "解释", "怎么算", "explain", "凭什么", "贵在"])
-        wants_quote = any(k in low for k in ["报价", "多少钱", "价格", "quote", "price", "cost"])
-        wants_compare = any(k in low for k in ["对比", "比较", "compare"])
-        wants_cheaper = any(k in low for k in ["便宜", "更省", "省钱", "cheaper", "save"])
-        wants_dfm = any(k in low for k in ["dfm", "可加工", "工艺", "风险", "问题", "manufactur"])
-        wants_analyze = any(k in low for k in ["分析", "评估", "analyz", "review", "看看", "检查"])
-        wants_setprice = any(k in low for k in ["改价", "设置价格", "set price", "update price", "调价"])
-
-        wants_calib = any(k in low for k in ["实测", "实际工时", "反标定", "校准工时", "calibrat"])
-        if wants_calib and "record_actual_time" in names:
-            mm = re.search(r"(\d+(?:\.\d+)?)\s*(?:分钟|min)", user, re.I)
-            call("record_actual_time", {"material": mat or args.get("material", ""),
-                                        "actual_min": float(mm.group(1)) if mm else 0})
-        elif wants_setprice and "set_price" in names:
-            call("set_price", _parse_setprice(user))
-        elif wants_analyze and "get_quote" in names:
-            if "get_quote" in names:
-                call("get_quote", args)
-            if "analyze_dfm" in names:
-                call("analyze_dfm", {})
-            if "suggest_cheaper_material" in names:
-                call("suggest_cheaper_material", {})
-        elif wants_explain and "explain_quote" in names:
-            call("explain_quote", {})
-        else:
-            if wants_quote and "get_quote" in names:
-                call("get_quote", args)
-            if wants_compare and "compare_materials" in names:
-                call("compare_materials", {})
-            if wants_cheaper and "suggest_cheaper_material" in names:
-                call("suggest_cheaper_material", {})
-            if wants_dfm and "analyze_dfm" in names:
-                call("analyze_dfm", {})
+        for s in chosen:
+            if s["kind"] == "analyze":
+                for a in s.get("actions", []):
+                    if a in names:
+                        call(a, args if a == "get_quote" else {})
+            elif s["kind"] == "action":
+                act = s["action"]
+                if act == "record_actual_time":
+                    mm = re.search(r"(\d+(?:\.\d+)?)\s*(?:分钟|min)", user, re.I)
+                    call(act, {"material": mat or args.get("material", ""),
+                               "actual_min": float(mm.group(1)) if mm else 0})
+                elif act == "set_price":
+                    call(act, _parse_setprice(user))
+                elif act == "get_quote":
+                    call(act, args)
+                else:
+                    call(act, {})
 
         if calls:
             return AssistantTurn(text="", tool_calls=calls, done=False)
 
         return AssistantTurn(text=_help_text(), done=True)
+
+
+def _match_skills(user: str, tool_names: set, *, is_admin: bool):
+    """Resolve the effective skill library (defaults + runtime overrides) and
+    match it against the user message. Best-effort: never let a store/skill
+    error break the chat — fall back to an empty match (help text)."""
+    from . import skills as _skills
+    try:
+        from .. import store
+        overrides = store.get_skill_overrides()
+    except Exception:
+        overrides = {}
+    try:
+        lib = _skills.load_skills(overrides)
+        return _skills.match(user, lib, tool_names=set(tool_names), is_admin=is_admin)
+    except Exception:
+        return [], False
 
 
 def _parse_setprice(text: str) -> dict:
