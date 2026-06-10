@@ -61,10 +61,10 @@ class FeatureSet:
         return len({round(h.diameter_mm, 1) for h in self.holes}) if self.holes else 0
 
 
-# Geometry thresholds — deliberately conservative, tunable shop constants.
-_SLENDER_RATIO = 8.0     # longest/shortest bbox edge above this = floppy/whippy
-_THIN_WALL_MM = 1.0      # below this = deformation risk
-_FREEFORM_COMPLEXITY = 0.45  # surface-area proxy above this = sculpted/freeform
+# Surface-area proxy above this = sculpted/freeform (drives 5-axis promotion).
+# Manufacturability *messaging* thresholds live in cnc/dfm.py — the single DFM
+# rule engine; this module only derives plan-affecting facts.
+_FREEFORM_COMPLEXITY = 0.45
 
 
 def analyze(
@@ -75,38 +75,11 @@ def analyze(
     min_wall_mm: float | None = None,
 ) -> FeatureSet:
     holes = holes or []
-    warnings: list[str] = []
 
-    dims = sorted(metrics.dims_mm)
-    if dims[0] > 0 and dims[2] / dims[0] > _SLENDER_RATIO:
-        warnings.append(
-            f"细长比偏大 ({dims[2]/dims[0]:.0f}:1)，加工易振动/变形，可能需要额外支撑或降速。"
-        )
-
-    if metrics.complexity > _FREEFORM_COMPLEXITY:
-        warnings.append(
-            "检测到大量非平面/自由曲面，建议球头刀精铣或五轴联动，系数已自动上调。"
-        )
-        # Heavy freeform geometry strongly implies multi-axis work.
-        if not requires_5axis and metrics.complexity > 0.7:
-            requires_5axis = True
-            warnings.append("曲面复杂度很高，已自动按五轴联动估算。")
-
-    if min_wall_mm is not None and 0 < min_wall_mm < _THIN_WALL_MM:
-        warnings.append(
-            f"最小壁厚 {min_wall_mm:.2f}mm < {_THIN_WALL_MM:.0f}mm，存在加工变形风险，难度系数上调。"
-        )
-
-    for h in holes:
-        if h.is_deep:
-            warnings.append(
-                f"Ø{h.diameter_mm:g} 深 {h.depth_mm:g}mm 深径比 >4，需啄钻(peck)，工时上调。"
-            )
-        if h.threaded and h.diameter_mm < 2.0:
-            warnings.append(f"Ø{h.diameter_mm:g} 螺纹孔过小，攻丝易断丝，建议确认螺距。")
-
-    # The universal CNC reminder from the brief: inside corners can't be sharp.
-    warnings.append("提示：CNC 内壁转角受刀具直径限制必然带 R 角；若需绝对直角需 EDM 清角，成本另计。")
+    # Heavy freeform geometry strongly implies multi-axis work — this changes
+    # the machine/plan, so it stays here (not in the advisory DFM layer).
+    if not requires_5axis and metrics.complexity > 0.7:
+        requires_5axis = True
 
     return FeatureSet(
         metrics=metrics,
@@ -114,5 +87,4 @@ def analyze(
         tight_tolerance=tight_tolerance,
         requires_5axis=requires_5axis,
         min_wall_mm=min_wall_mm,
-        warnings=warnings,
     )

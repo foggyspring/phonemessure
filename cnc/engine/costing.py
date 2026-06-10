@@ -164,6 +164,44 @@ def _breakdown(
     )
 
 
+def _resolve_lead_time(biz: dict, plan: ProcessPlan, material: Material,
+                       finish: Finish, rq: int, lead_time: str | None,
+                       rush: bool, notes: list[str]):
+    """Resolve the delivery sub-domain in one place.
+
+    Lead-time tiers (经济/标准/加急/特急) carry a price multiplier, like JLC /
+    Protolabs; rush=True stays an alias for the fastest tier. The chosen tier's
+    window is then floored by machining capacity (a 1000-piece order can't ship
+    in 10 days at 16 h/day) and extended by material procurement and outsourced
+    finishing turnaround. Returns (sel_tier, lead_factor, lead_days, lead_for, tier_cfg).
+    """
+    tier_cfg = list(biz.get("lead_time_tiers") or
+                    [{"key": "standard", "label": "标准", "days": int(biz["standard_lead_days"]), "factor": 1.0}])
+    default_key = str(biz.get("default_lead_time", "standard"))
+    sel_key = lead_time or (tier_cfg[-1]["key"] if bool(rush) else default_key)
+    sel = next((t for t in tier_cfg if t["key"] == sel_key), None) \
+        or next((t for t in tier_cfg if t["key"] == default_key), tier_cfg[0])
+    lead_factor = float(sel["factor"])
+    procure_days = int(material.stock_lead_days or 0)
+    capacity_h = float(biz.get("daily_capacity_hours", 16) or 16)
+    machining_days = math.ceil(plan.times.per_part_min * rq / 60.0 / capacity_h) if capacity_h > 0 else 0
+    finish_days = int(finish.lead_days or 0)
+
+    def lead_for(tier_days: int) -> int:
+        return max(int(tier_days), machining_days) + procure_days + finish_days
+
+    lead_days = lead_for(int(sel["days"]))
+    if procure_days:
+        notes.append(f"{material.label} 非常备料，备料 +{procure_days} 天")
+    if finish_days:
+        notes.append(f"{finish.label} 外协后处理 +{finish_days} 天")
+    if machining_days > int(sel["days"]):
+        notes.append(f"大批量按产能排产，加工约 {machining_days} 天（{capacity_h:g}h/天）")
+    if lead_factor != 1.0:
+        notes.append(f"{sel['label']} {lead_days} 天交付：交期系数 ×{lead_factor}")
+    return sel, lead_factor, lead_days, lead_for, tier_cfg
+
+
 def price(
     plan: ProcessPlan,
     material: Material,
@@ -245,40 +283,8 @@ def price(
     if finish.min_cny > 0 and finish_setup_cny + finish_var_cny * rq < finish.min_cny:
         notes.append(f"表面处理起步价 {finish.min_cny:g} 元，已按数量补足差额")
 
-    # Lead-time tiers (经济/标准/加急/特急): one quote, several delivery options
-    # with their own price multiplier, like JLC / Protolabs. rush=True is kept
-    # as an alias for the fastest configured tier (backward compatible).
-    tier_cfg = list(biz.get("lead_time_tiers") or
-                    [{"key": "standard", "label": "标准", "days": int(biz["standard_lead_days"]), "factor": 1.0}])
-    default_key = str(biz.get("default_lead_time", "standard"))
-    sel_key = lead_time or (tier_cfg[-1]["key"] if bool(rush) else default_key)
-    sel = next((t for t in tier_cfg if t["key"] == sel_key), None) \
-        or next((t for t in tier_cfg if t["key"] == default_key), tier_cfg[0])
-    lead_factor = float(sel["factor"])
-    # Procurement: non-stocked materials (titanium / 316 …) wait for stock before
-    # machining can even start, so add their lead to every delivery option.
-    procure_days = int(material.stock_lead_days or 0)
-    # Capacity: a large order can't physically ship within the tier window —
-    # 1000 parts × 40min ≈ 667 machine-hours. Floor the lead at the machining
-    # days implied by total cycle time ÷ daily capacity (maintainable).
-    capacity_h = float(biz.get("daily_capacity_hours", 16) or 16)
-    machining_days = math.ceil(plan.times.per_part_min * rq / 60.0 / capacity_h) if capacity_h > 0 else 0
-
-    # Outsourced finishing (anodize / powder coat …) adds turnaround after cutting.
-    finish_days = int(finish.lead_days or 0)
-
-    def _lead_for(tier_days: int) -> int:
-        return max(int(tier_days), machining_days) + procure_days + finish_days
-
-    lead_days = _lead_for(int(sel["days"]))
-    if procure_days:
-        notes.append(f"{material.label} 非常备料，备料 +{procure_days} 天")
-    if finish_days:
-        notes.append(f"{finish.label} 外协后处理 +{finish_days} 天")
-    if machining_days > int(sel["days"]):
-        notes.append(f"大批量按产能排产，加工约 {machining_days} 天（{capacity_h:g}h/天）")
-    if lead_factor != 1.0:
-        notes.append(f"{sel['label']} {lead_days} 天交付：交期系数 ×{lead_factor}")
+    sel, lead_factor, lead_days, _lead_for, tier_cfg = _resolve_lead_time(
+        biz, plan, material, finish, rq, lead_time, rush, notes)
 
     def make(qty: int, factor: float = lead_factor) -> CostBreakdown:
         b = _breakdown(qty, material_cny, machining_cny, finish_var_cny,

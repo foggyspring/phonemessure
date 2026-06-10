@@ -390,7 +390,11 @@ def build_quote(
         "plan": plan_d,
         "quote": quote.to_dict(),
         "price_drivers": _price_drivers(quote.requested.to_dict()),
-        "warnings": feat.warnings,
+        # Flat-text summary derived from the DFM findings (single rule engine in
+        # cnc/dfm.py) — feat.warnings carries only out-of-band notes like the
+        # unit-suspect hint inserted above.
+        "warnings": feat.warnings + [f"{d['title']}：{d['detail']}" for d in dfm
+                                     if d["severity"] in ("high", "medium")],
         "dfm": dfm,
         "dfm_summary": _dfm_summary(dfm),
         "assumptions": _assumptions(req, feat, holes_auto,
