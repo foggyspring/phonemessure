@@ -1725,7 +1725,6 @@ async function loadBackends() {
     });
     const tiers = [];
     if (av.toolpath) tiers.push(av.surface_dropcutter ? "刀路仿真+曲面drop-cutter" : "刀路仿真");
-    if (av.freecad) tiers.push("FreeCAD CAM");
     $("backend-hint").textContent = tiers.length
       ? "可用高精度后端：" + tiers.join(" / ")
       : "仅解析快算可用（pip install trimesh shapely 开启刀路仿真）";
@@ -1733,7 +1732,7 @@ async function loadBackends() {
 }
 
 const BACKEND_LABEL = {
-  toolpath: "刀路仿真 Toolpath", analytic: "解析 Analytic", freecad: "FreeCAD CAM",
+  toolpath: "刀路仿真 Toolpath", analytic: "解析 Analytic",
 };
 function renderEstimator(p) {
   const used = p.estimator?.used;

@@ -5,7 +5,6 @@ so costing/PDF never change):
 
   * "analytic"  — engine.capp.plan: fast V/MRR model, no deps, ~70% accuracy.
   * "toolpath"  — simulate real toolpaths with trimesh + shapely (needs a mesh).
-  * "freecad"   — drive FreeCAD's CAM workbench for true G-code (optional).
 
 `make_plan` picks the best available backend for the inputs and falls back
 cleanly, returning (plan, info) where info records what actually ran.
@@ -22,11 +21,10 @@ BACKENDS = ("auto", "analytic", "toolpath")
 
 
 def backend_status() -> dict:
-    from . import freecad_cam, surface_ocl
+    from . import surface_ocl
     return {
         "analytic": True,
         "toolpath": _toolpath.available(),
-        "freecad": freecad_cam.available(),
         "surface_dropcutter": surface_ocl.available(),  # opencamlib refinement
     }
 
