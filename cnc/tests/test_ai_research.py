@@ -18,10 +18,10 @@ from cnc.geometry import metrics_from_stl_bytes
 from cnc.tests.fixtures import cube_stl
 
 
-def _ctx(material="AL7075", qty=10):
+def _ctx(material="AL7075", qty=10, **extra):
     sb = cube_stl(60.0)
     return AgentContext(shop=load(), metrics=metrics_from_stl_bytes(sb), mesh_stl=sb,
-                        params={"material": material, "quantity": qty, "finish": "none"})
+                        params={"material": material, "quantity": qty, "finish": "none", **extra})
 
 
 def _run_flow(answers="是承力件，本批20件，30天内要", ctx=None):
@@ -142,3 +142,54 @@ def test_research_endpoint_carries_state_across_turns(client):
     d = r2.json()
     assert d["stage"] == "geometry" and d["state"]["answers"]["batch"] == 30
     assert d["next_steps"]                      # guidance chips always offered
+
+
+def test_skip_word_does_not_discard_explicit_info_in_same_message():
+    # "是外观件，数量不知道" — the skip-word must only fill the REMAINING
+    # blanks; the explicit 外观件 must survive (it flips the material verdict).
+    ctx = _ctx()
+    st = step("开始研究", None, ctx)["state"]
+    out = step("是外观件，数量不知道，按默认吧", st, ctx)
+    assert out["state"]["answers"]["load_bearing"] is False
+
+
+def test_bare_continue_at_clarify_advances_with_defaults():
+    # typing 继续 instead of clicking the 跳过 chip must not re-ask forever
+    ctx = _ctx()
+    st = step("开始研究", None, ctx)["state"]
+    out = step("继续", st, ctx)
+    assert out["stage"] == "geometry"
+
+
+def test_tampered_state_never_crashes():
+    # the state round-trips through the client — malformed structures must be
+    # sanitized, not 500 (a tampered curve used to crash the brief stage)
+    ctx = _ctx()
+    hostile = [
+        {"stage": "evil", "answers": {}, "findings": {}},
+        {"stage": "clarify", "answers": [1, 2], "findings": {}},
+        {"stage": "quantity", "answers": {"batch": "abc"}, "findings": {}},
+        {"stage": "brief", "answers": {}, "findings": {"quantity": {"curve": "notalist"}}},
+        {"stage": "brief", "answers": {},
+         "findings": {"quantity": {"curve": [[1], "x", [2, "y"], [3, 4.5]]}}},
+        {"stage": "brief", "answers": None, "findings": None},
+        [1, 2, 3],
+    ]
+    for st in hostile:
+        out = step("继续", st, ctx)          # must not raise
+        assert out["stage"] in STAGES
+
+
+def test_deadline_conflict_with_outsourced_finish_warns_rush():
+    # anodize adds outsourced days; a 5-day hard deadline must trigger the
+    # rush-tier recommendation in both the quantity stage and the brief
+    ctx = _ctx(material="AL6061", finish="anodize_clear")
+    st = None
+    outs = [step("开始研究", st, ctx)]
+    for m in ("承力件 10件 5天内要", "继续", "继续", "继续", "继续"):
+        outs.append(step(m, outs[-1]["state"], ctx))
+        if outs[-1]["done"]:
+            break
+    qstage = next(o for o in outs if o["state"]["findings"].get("quantity"))
+    assert "超出约束" in qstage["reply"] and "加急" in qstage["reply"]
+    assert "加急" in outs[-1]["reply"]      # brief carries the action item

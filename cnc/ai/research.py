@@ -31,10 +31,71 @@ STAGE_LABELS = {"clarify": "需求澄清", "geometry": "几何/DFM", "material":
                 "quantity": "批量/交期", "brief": "决策简报"}
 
 _SKIP = re.compile(r"跳过|不知道|不确定|skip|默认", re.I)
+# At the clarify stage, a bare "continue"-style reply means "move on with
+# defaults" — re-asking the same questions would loop the user forever.
+_MOVE_ON = re.compile(r"^\s*(继续|好的?|行|ok|okay|go|开始研究)\s*[。.!！]?\s*$", re.I)
 
 
 def new_state() -> dict:
     return {"stage": "clarify", "answers": {}, "findings": {}}
+
+
+_MAX_BATCH = 100_000
+_MAX_DEADLINE = 3650
+
+
+def _sanitize(state: dict | None) -> dict:
+    """The state round-trips through the client, so treat it as untrusted input:
+    coerce types, clamp ranges, and drop malformed findings instead of 500ing
+    in a later stage (e.g. a tampered curve crashed the brief)."""
+    out = new_state()
+    if not isinstance(state, dict):
+        return out
+    if state.get("stage") in STAGES:
+        out["stage"] = state["stage"]
+    out["asked"] = bool(state.get("asked"))
+    a = state.get("answers")
+    if isinstance(a, dict):
+        if isinstance(a.get("load_bearing"), bool):
+            out["answers"]["load_bearing"] = a["load_bearing"]
+        try:
+            if a.get("batch") is not None:
+                out["answers"]["batch"] = max(1, min(_MAX_BATCH, int(a["batch"])))
+        except (TypeError, ValueError):
+            pass
+        if a.get("deadline_days") is None and "deadline_days" in a:
+            out["answers"]["deadline_days"] = None
+        else:
+            try:
+                if a.get("deadline_days") is not None:
+                    out["answers"]["deadline_days"] = max(1, min(_MAX_DEADLINE, int(a["deadline_days"])))
+            except (TypeError, ValueError):
+                pass
+    f = state.get("findings")
+    if isinstance(f, dict):
+        for key in ("clarify", "geometry", "material", "quantity"):
+            v = f.get(key)
+            if key == "clarify":
+                if isinstance(v, str):
+                    out["findings"][key] = v
+                continue
+            if not isinstance(v, dict):
+                continue
+            if key == "quantity":
+                curve = []
+                for item in (v.get("curve") if isinstance(v.get("curve"), list) else []):
+                    try:
+                        q, u = item
+                        curve.append((int(q), float(u)))
+                    except (TypeError, ValueError):
+                        continue
+                v = {**v, "curve": curve}
+            if key == "geometry" and not isinstance(v.get("risks"), list):
+                v = {**v, "risks": []}
+            if key == "material" and not isinstance(v.get("dropped"), list):
+                v = {**v, "dropped": []}
+            out["findings"][key] = v
+    return out
 
 
 def _parse_clarify(text: str, answers: dict) -> dict:
@@ -48,10 +109,10 @@ def _parse_clarify(text: str, answers: dict) -> dict:
             answers["load_bearing"] = False
     m = re.search(r"(\d+)\s*(?:件|个|pcs|套)", text)
     if m and "batch" not in answers:
-        answers["batch"] = int(m.group(1))
+        answers["batch"] = max(1, min(_MAX_BATCH, int(m.group(1))))
     m = re.search(r"(\d+)\s*(?:天|日|days?)", text)
     if m and "deadline_days" not in answers:
-        answers["deadline_days"] = int(m.group(1))
+        answers["deadline_days"] = max(1, min(_MAX_DEADLINE, int(m.group(1))))
     return answers
 
 
@@ -72,19 +133,23 @@ def step(message: str, state: dict | None, ctx: AgentContext) -> dict:
     if re.search(r"重新开始|重新研究|restart", message or "", re.I):
         state = new_state()
         message = ""
-    state = dict(state or new_state())
-    state.setdefault("answers", {})
-    state.setdefault("findings", {})
-    stage = state.get("stage") or "clarify"
-    if stage not in STAGES:
-        stage = "clarify"
+    state = _sanitize(state)
+    stage = state["stage"]
 
     if stage == "clarify":
-        if not _SKIP.search(message or ""):
-            _parse_clarify(message or "", state["answers"])
-        open_qs = [] if _SKIP.search(message or "") else _clarify_questions(state["answers"])
+        # Parse FIRST, always: "是外观件，数量不知道" must keep the explicit
+        # 外观件 — a skip-word only means "fill what's still missing with
+        # defaults", never "discard what I just told you".
+        _parse_clarify(message or "", state["answers"])
+        # Once the questions have been ASKED (state flag), a skip-word or a bare
+        # continue-style reply means "fill the rest with defaults" — re-asking
+        # would loop a user who types 继续 instead of clicking the 跳过 chip.
+        skip = bool(state.get("asked")) and bool(
+            _SKIP.search(message or "") or _MOVE_ON.match(message or ""))
+        open_qs = [] if skip else _clarify_questions(state["answers"])
         if open_qs:
             state["stage"] = "clarify"
+            state["asked"] = True
             return _resp(state,
                          reply="开始研究前，先确认几个影响结论的关键点：\n"
                                + "\n".join(f"· {q}" for q in open_qs)
