@@ -109,7 +109,7 @@ def analyze_dfm(
     # ---- holes: depth/dia ratio, small dia, small tapped ----
     for h in feat.holes:
         d, depth = h.diameter_mm, h.depth_mm
-        if d > 0:
+        if d > 0 and depth > 0:
             r = depth / d
             if r > 10:
                 out.append(_f("high", "deep_hole", "深径比过大 Deep hole",
@@ -138,7 +138,7 @@ def analyze_dfm(
                               f"底孔钻 Ø{drill:g}mm（=公称−螺距）。",
                               "如为细牙/英制螺纹请在备注注明，底孔随之调整。"))
         # thread engagement depth: AL/软材料推荐 1.5–2×D，<1×D 螺纹强度不足
-        if h.threaded and d > 0:
+        if h.threaded and d > 0 and depth > 0:
             eng = depth / d
             if eng < 1.0:
                 out.append(_f("medium", "thread_engage", "螺纹啮合深度不足 Thread engagement",

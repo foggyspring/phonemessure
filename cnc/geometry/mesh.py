@@ -114,6 +114,12 @@ def _metrics_from_triangles(tris: list[tuple[Vec, Vec, Vec]]) -> MeshMetrics:
         vol += _signed_tetra_vol(a, b, c)
         area += _tri_area(a, b, c)
 
+    # Reject non-finite geometry: a NaN/inf coordinate is silently skipped by the
+    # bbox comparisons (NaN compares False) yet still poisons vol/area, which would
+    # flow into weight→price as NaN and slip past the size guards. Fail loudly.
+    if not all(math.isfinite(v) for v in (*mn, *mx, vol, area)):
+        raise GeometryError("mesh has non-finite (NaN/inf) vertices")
+
     return MeshMetrics(
         triangles=len(tris),
         bbox_min=(mn[0], mn[1], mn[2]),

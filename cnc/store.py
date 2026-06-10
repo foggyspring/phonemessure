@@ -15,6 +15,7 @@ import json
 import os
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -93,6 +94,20 @@ def _connect(path: str | os.PathLike | None = None) -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _session(path: str | os.PathLike | None = None):
+    """Open a connection, commit on success / roll back on error, and ALWAYS
+    close it. The bare `with sqlite3.connect(...)` transaction manager commits
+    but never closes — leaking a handle (and re-running schema/PRAGMA) per call.
+    """
+    conn = _connect(path)
+    try:
+        with conn:                       # commit / rollback transaction
+            yield conn
+    finally:
+        conn.close()
+
+
 # Schema version + ordered migrations. Bump _SCHEMA_VERSION and append an entry
 # when a column/table change can't be expressed as a plain CREATE IF NOT EXISTS
 # (e.g. ALTER TABLE / backfill), so old databases upgrade in place.
@@ -122,7 +137,7 @@ def save_quote(payload: dict, *, path: str | os.PathLike | None = None) -> str:
     qid = "Q" + uuid.uuid4().hex[:12]
     inp = payload.get("input", {})
     req = payload.get("quote", {}).get("requested", {})
-    with _connect(path) as conn:
+    with _session(path) as conn:
         conn.execute(
             "INSERT INTO quotes (id, created_at, part_name, material, quantity, "
             "unit_price, line_total, currency, payload) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -142,7 +157,7 @@ def save_quote(payload: dict, *, path: str | os.PathLike | None = None) -> str:
 
 
 def get_quote(qid: str, *, path: str | os.PathLike | None = None) -> dict | None:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         row = conn.execute("SELECT payload FROM quotes WHERE id=?", (qid,)).fetchone()
     if not row:
         return None
@@ -165,7 +180,7 @@ def list_quotes(
         args = [f"%{search}%", f"%{search}%"]
     limit = max(1, min(200, int(limit)))
     offset = max(0, int(offset))
-    with _connect(path) as conn:
+    with _session(path) as conn:
         total = conn.execute(f"SELECT COUNT(*) AS n FROM quotes{where}", args).fetchone()["n"]
         rows = conn.execute(
             f"SELECT {cols} FROM quotes{where} ORDER BY created_at DESC, rowid DESC "
@@ -181,7 +196,7 @@ def set_override(
 ) -> None:
     if kind not in ("material", "machine", "finish", "business", "capp", "cutting"):
         raise ValueError("kind must be material/machine/finish/business/capp/cutting")
-    with _connect(path) as conn:
+    with _session(path) as conn:
         conn.execute(
             "INSERT INTO price_overrides (kind, key, field, value, updated_at) "
             "VALUES (?,?,?,?,?) ON CONFLICT(kind, key, field) "
@@ -193,21 +208,21 @@ def set_override(
 def get_overrides(*, path: str | os.PathLike | None = None) -> dict:
     """Return {'material': {key: {field: value}}, 'machine': {...}}."""
     out: dict[str, dict] = {"material": {}, "machine": {}}
-    with _connect(path) as conn:
+    with _session(path) as conn:
         for r in conn.execute("SELECT kind, key, field, value FROM price_overrides"):
             out.setdefault(r["kind"], {}).setdefault(r["key"], {})[r["field"]] = r["value"]
     return out
 
 
 def clear_overrides(*, path: str | os.PathLike | None = None) -> None:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         conn.execute("DELETE FROM price_overrides")
 
 
 def clear_override(kind: str, key: str, field: str,
                    *, path: str | os.PathLike | None = None) -> int:
     """Revert one override back to the static default. Returns rows removed."""
-    with _connect(path) as conn:
+    with _session(path) as conn:
         cur = conn.execute("DELETE FROM price_overrides WHERE kind=? AND key=? AND field=?",
                            (kind, key, field))
         return cur.rowcount
@@ -222,18 +237,21 @@ def get_secret(*, path: str | os.PathLike | None = None) -> str:
     env = os.environ.get("CNC_SECRET")
     if env:
         return env
-    with _connect(path) as conn:
+    with _session(path) as conn:
         row = conn.execute("SELECT value FROM settings WHERE key='secret'").fetchone()
         if row:
             return row["value"]
-        val = _secrets.token_hex(32)
-        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('secret', ?)", (val,))
-        return val
+        # INSERT OR IGNORE + re-SELECT so concurrent cold-start callers converge
+        # on a single committed secret instead of each racing a fresh token
+        # (which would silently invalidate already-issued tokens).
+        conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('secret', ?)",
+                     (_secrets.token_hex(32),))
+        return conn.execute("SELECT value FROM settings WHERE key='secret'").fetchone()["value"]
 
 
 def create_user(username: str, pw_hash: str, role: str = "admin",
                 *, path: str | os.PathLike | None = None) -> None:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO users (username, pw_hash, role, created_at) "
             "VALUES (?,?,?,?)",
@@ -242,7 +260,7 @@ def create_user(username: str, pw_hash: str, role: str = "admin",
 
 
 def get_user(username: str, *, path: str | os.PathLike | None = None) -> dict | None:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         row = conn.execute(
             "SELECT username, pw_hash, role FROM users WHERE username=?", (username,)
         ).fetchone()
@@ -250,7 +268,7 @@ def get_user(username: str, *, path: str | os.PathLike | None = None) -> dict | 
 
 
 def count_users(*, path: str | os.PathLike | None = None) -> int:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         return conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
 
 
@@ -260,7 +278,7 @@ def add_calibration_sample(
     *, backend: str | None = None, quote_id: str | None = None,
     path: str | os.PathLike | None = None,
 ) -> None:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         conn.execute(
             "INSERT INTO calibration_samples "
             "(created_at, material, backend, quote_id, estimated_min, actual_min) "
@@ -270,7 +288,7 @@ def add_calibration_sample(
 
 
 def calibration_samples(*, path: str | os.PathLike | None = None) -> list[dict]:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         rows = conn.execute(
             "SELECT material, backend, estimated_min, actual_min FROM calibration_samples"
         ).fetchall()
@@ -279,13 +297,13 @@ def calibration_samples(*, path: str | os.PathLike | None = None) -> list[dict]:
 
 def add_audit(actor: str, action: str, detail: str = "",
               *, path: str | os.PathLike | None = None) -> None:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         conn.execute("INSERT INTO audit_log (created_at, actor, action, detail) VALUES (?,?,?,?)",
                      (_now(), actor, action, detail))
 
 
 def list_audit(*, limit: int = 100, path: str | os.PathLike | None = None) -> list[dict]:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         rows = conn.execute("SELECT created_at, actor, action, detail FROM audit_log "
                             "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]
@@ -294,13 +312,13 @@ def list_audit(*, limit: int = 100, path: str | os.PathLike | None = None) -> li
 def save_ai_session(session_id: str, messages: list, title: str = "",
                     *, path: str | os.PathLike | None = None) -> None:
     import json as _json
-    with _connect(path) as conn:
+    with _session(path) as conn:
         conn.execute("INSERT OR REPLACE INTO ai_sessions (id, created_at, title, messages) "
                      "VALUES (?,?,?,?)", (session_id, _now(), title, _json.dumps(messages, ensure_ascii=False)))
 
 
 def list_ai_sessions(*, limit: int = 30, path: str | os.PathLike | None = None) -> list[dict]:
-    with _connect(path) as conn:
+    with _session(path) as conn:
         rows = conn.execute("SELECT id, created_at, title FROM ai_sessions "
                             "ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]
@@ -308,7 +326,7 @@ def list_ai_sessions(*, limit: int = 30, path: str | os.PathLike | None = None) 
 
 def get_ai_session(session_id: str, *, path: str | os.PathLike | None = None) -> dict | None:
     import json as _json
-    with _connect(path) as conn:
+    with _session(path) as conn:
         row = conn.execute("SELECT id, created_at, title, messages FROM ai_sessions WHERE id=?",
                            (session_id,)).fetchone()
     if not row:

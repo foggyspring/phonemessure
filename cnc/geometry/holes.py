@@ -21,7 +21,11 @@ _MIN_FACES = 6
 _MAX_FACES = 80000
 
 
-def detect_holes(stl_bytes: bytes, *, max_faces: int = _MAX_FACES) -> list[dict]:
+def detect_holes(stl_bytes: bytes, *, max_faces: int = _MAX_FACES,
+                 scale: float = 1.0) -> list[dict]:
+    """Detect cylindrical bores. ``scale`` maps native mesh units to mm (25.4 for
+    an inch file), so the absolute mm gates below apply to the *physical* size —
+    otherwise inch parts (≈25× smaller native coords) under-detect their holes."""
     try:
         import numpy as np
         import trimesh
@@ -72,7 +76,7 @@ def detect_holes(stl_bytes: bytes, *, max_faces: int = _MAX_FACES) -> list[dict]
         if r2 <= 0:
             continue
         r = math.sqrt(r2)
-        if r < 0.3 or r > 200.0:
+        if r * scale < 0.3 or r * scale > 200.0:    # gates are in physical mm
             continue
         rho = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
         if np.mean(np.abs(rho - r)) > 0.15 * r:
@@ -94,7 +98,7 @@ def detect_holes(stl_bytes: bytes, *, max_faces: int = _MAX_FACES) -> list[dict]
         # through if the bore spans the part along its axis
         part_extent = float(np.ptp(mesh.vertices @ axis))
         through = depth > 0.85 * part_extent
-        if depth < 0.5:
+        if depth * scale < 0.5:                      # gate is in physical mm
             continue
         found.append((2 * r, depth, through))
 

@@ -71,10 +71,12 @@ class Quote:
         # the customer pays. Quote carries a validity window since prices move.
         from datetime import date, timedelta
 
-        line_net = round(self.requested.unit_price_cny, 2) * self.requested.quantity
+        # Round the line net first so line_net_cny + min_order_topup_cny exactly
+        # equals net_total_cny (no sub-cent float dust at the floor boundary).
+        line_net = round(round(self.requested.unit_price_cny, 2) * self.requested.quantity, 2)
         # Minimum-order floor: a shop's fixed admin/invoicing/handling cost means
         # very small orders are billed at the minimum, not the raw line total.
-        net = max(line_net, self.min_order_cny)
+        net = max(line_net, round(self.min_order_cny, 2))
         min_order_topup = round(net - line_net, 2)
         tax = net * self.tax_rate
         valid_until = (date.today() + timedelta(days=self.valid_days)).isoformat() \
@@ -119,7 +121,11 @@ def _material_cost(plan: ProcessPlan, material: Material) -> tuple[float, float,
     price = material.price_cny_per_kg
     gross = (plan.stock_volume_cm3 * material.density_g_cm3 / 1000.0) * price
     removed_kg = plan.removed_volume_cm3 * material.density_g_cm3 / 1000.0
-    credit = removed_kg * price * material.scrap_credit_frac
+    # Clamp the credit fraction to [0,1]: an admin override typo (e.g. 1.5) must
+    # never credit back more than the chips are worth and drive material cost
+    # (and the whole quote) negative.
+    frac = max(0.0, min(1.0, material.scrap_credit_frac))
+    credit = removed_kg * price * frac
     return gross - credit, gross, credit
 
 
@@ -290,13 +296,15 @@ def price(
     from datetime import date as _date, timedelta as _td
     lead_time_options = []
     for t in tier_cfg:
-        u = make(rq, float(t["factor"])).unit_price_cny
+        # Total must be rounded-unit × qty (same basis as CostBreakdown.to_dict),
+        # so the option table passes the customer's unit×qty hand-check.
+        ur = round(make(rq, float(t["factor"])).unit_price_cny, 2)
         days = _lead_for(int(t["days"]))
         lead_time_options.append({
             "key": t["key"], "label": t["label"], "days": days,
             "delivery_date": (_date.today() + _td(days=days)).isoformat(),
-            "factor": float(t["factor"]), "unit_price_cny": round(u, 2),
-            "total_cny": round(u * rq, 2), "selected": t["key"] == sel["key"],
+            "factor": float(t["factor"]), "unit_price_cny": ur,
+            "total_cny": round(ur * rq, 2), "selected": t["key"] == sel["key"],
         })
 
     return Quote(

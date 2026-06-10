@@ -19,6 +19,7 @@ import base64
 import json
 import logging
 import os
+import threading
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -108,6 +109,9 @@ def _seed_admin() -> None:
 _LOGIN_MAX_FAILS = 8
 _LOGIN_WINDOW_S = 60
 _login_fails: dict[str, deque] = defaultdict(deque)
+# A fixed PBKDF2 hash to verify against when the username doesn't exist, so the
+# login path takes constant time regardless of whether the user is real.
+_DUMMY_PW_HASH = auth.hash_password("cnc-timing-equalizer")
 
 
 _AI_MAX_PER_MIN = 40
@@ -115,6 +119,10 @@ _AI_MAX_PER_DAY = 500
 _ai_calls: dict[str, deque] = defaultdict(deque)
 _ai_calls_day: dict[str, deque] = defaultdict(deque)
 _AI_MSG_MAX = 2000
+# Sync endpoints run in a thread pool, so the throttle deques are touched from
+# multiple threads. The prune-then-check-then-append sequences aren't atomic;
+# one lock keeps them consistent (and avoids an IndexError on a racing popleft).
+_throttle_lock = threading.Lock()
 _AI_HISTORY_MAX = 24
 
 
@@ -128,36 +136,40 @@ def _ai_cost_guard(ip: str, authorization: str | None) -> None:
         if not (tok and auth.verify_token(store.get_secret(), tok)):
             raise HTTPException(status_code=401,
                                 detail="AI 已接入真实模型，请登录后使用（或设 AI_PUBLIC=1 开放）。")
-    dq = _ai_calls_day[ip]
     now = time.time()
-    while dq and now - dq[0] > 86400:
-        dq.popleft()
-    if len(dq) >= _AI_MAX_PER_DAY:
-        raise HTTPException(status_code=429, detail="今日 AI 调用已达上限。")
-    dq.append(now)
+    with _throttle_lock:
+        dq = _ai_calls_day[ip]
+        while dq and now - dq[0] > 86400:
+            dq.popleft()
+        if len(dq) >= _AI_MAX_PER_DAY:
+            raise HTTPException(status_code=429, detail="今日 AI 调用已达上限。")
+        dq.append(now)
 
 
 def _ai_throttled(ip: str) -> bool:
-    dq = _ai_calls[ip]
     now = time.time()
-    while dq and now - dq[0] > 60:
-        dq.popleft()
-    if len(dq) >= _AI_MAX_PER_MIN:
-        return True
-    dq.append(now)
+    with _throttle_lock:
+        dq = _ai_calls[ip]
+        while dq and now - dq[0] > 60:
+            dq.popleft()
+        if len(dq) >= _AI_MAX_PER_MIN:
+            return True
+        dq.append(now)
     return False
 
 
 def _login_throttled(ip: str) -> bool:
-    dq = _login_fails[ip]
     now = time.time()
-    while dq and now - dq[0] > _LOGIN_WINDOW_S:
-        dq.popleft()
-    return len(dq) >= _LOGIN_MAX_FAILS
+    with _throttle_lock:
+        dq = _login_fails[ip]
+        while dq and now - dq[0] > _LOGIN_WINDOW_S:
+            dq.popleft()
+        return len(dq) >= _LOGIN_MAX_FAILS
 
 
 def _record_login_fail(ip: str) -> None:
-    _login_fails[ip].append(time.time())
+    with _throttle_lock:
+        _login_fails[ip].append(time.time())
 
 
 def require_admin(authorization: str | None = Header(default=None)) -> dict:
@@ -354,13 +366,21 @@ def build_app() -> FastAPI:
         return {"tools": tool_schemas(is_admin=True)}
 
     @app.post("/api/ai/session")
-    def ai_save_session(body: dict) -> dict:
-        sid = str(body.get("id") or "")
+    def ai_save_session(body: dict, request: Request) -> dict:
+        # Open (the panel persists chats without a login) but bounded + rate-limited
+        # so it can't be abused for unbounded storage writes.
+        if _ai_throttled(request.client.host if request.client else "unknown"):
+            raise HTTPException(status_code=429, detail="保存过于频繁，请稍后再试。")
+        sid = str(body.get("id") or "")[:64]
         msgs = body.get("messages")
         if not sid or not isinstance(msgs, list):
             raise HTTPException(status_code=400, detail="id and messages[] required")
+        # cap each message so a single request can't write an unbounded blob
+        trimmed = [{"role": str(m.get("role", ""))[:16],
+                    "content": str(m.get("content", ""))[:_AI_MSG_MAX]}
+                   for m in msgs[-_AI_HISTORY_MAX:] if isinstance(m, dict)]
         title = str(body.get("title", ""))[:80]
-        store.save_ai_session(sid, msgs[-_AI_HISTORY_MAX:], title)
+        store.save_ai_session(sid, trimmed, title)
         return {"ok": True, "id": sid}
 
     @app.get("/api/ai/sessions")
@@ -383,7 +403,10 @@ def build_app() -> FastAPI:
     ) -> JSONResponse:
         from .ai.agent import analyze_part
         from .ai.tools import AgentContext
-        _ai_cost_guard(request.client.host if request.client else "unknown", authorization)
+        ip = request.client.host if request.client else "unknown"
+        if _ai_throttled(ip):
+            raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试。")
+        _ai_cost_guard(ip, authorization)
         try:
             p = json.loads(params) if params else {}
         except json.JSONDecodeError as exc:
@@ -548,14 +571,19 @@ def build_app() -> FastAPI:
                 payload["id"] = None
         return JSONResponse(payload)
 
+    def _render_pdf(payload: dict, **kw) -> bytes:
+        """Render with a logged, generic 500 — never echo internals to the client."""
+        try:
+            return build_quote_pdf(payload, **kw)
+        except Exception:
+            log.exception("PDF render failed")
+            raise HTTPException(status_code=500, detail="PDF 生成失败，请稍后重试。") from None
+
     @app.post("/api/quote/pdf")
     async def quote_pdf(payload: dict) -> Response:
         if "quote" not in payload or "input" not in payload:
             raise HTTPException(status_code=400, detail="payload must be a /api/quote result")
-        try:
-            pdf = build_quote_pdf(payload)
-        except Exception as exc:  # reportlab failure -> 500 with message
-            raise HTTPException(status_code=500, detail=f"PDF render failed: {exc}") from exc
+        pdf = _render_pdf(payload)
         name = (payload.get("input", {}).get("part_name") or "quote").replace(" ", "_")
         return Response(
             content=pdf,
@@ -580,7 +608,7 @@ def build_app() -> FastAPI:
         payload = store.get_quote(quote_id)
         if payload is None:
             raise HTTPException(status_code=404, detail=f"quote '{quote_id}' not found")
-        pdf = build_quote_pdf(payload, quote_no=quote_id)
+        pdf = _render_pdf(payload, quote_no=quote_id)
         name = (payload.get("input", {}).get("part_name") or "quote").replace(" ", "_")
         return Response(
             content=pdf,
@@ -596,7 +624,10 @@ def build_app() -> FastAPI:
         username = str(body.get("username", ""))
         password = str(body.get("password", ""))
         u = store.get_user(username)
-        if not u or not auth.verify_password(password, u["pw_hash"]):
+        # Verify against a real (or dummy) hash either way so a missing username
+        # costs the same PBKDF2 time as a wrong password (no timing enumeration).
+        ok = auth.verify_password(password, u["pw_hash"] if u else _DUMMY_PW_HASH)
+        if not u or not ok:
             _record_login_fail(ip)
             raise HTTPException(status_code=401, detail="用户名或密码错误 invalid credentials")
         _login_fails.pop(ip, None)   # reset on success

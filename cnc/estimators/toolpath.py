@@ -370,7 +370,11 @@ def plan_toolpath(
         finish_min, d = _simulate_finishing(mesh, bounds, cut, tools); ops.append(d)
     except Exception:
         finish_min = base.times.finishing_min
-    drill_min, tap_min, d = _simulate_drilling(feat, cut); ops.append(d)
+    try:
+        drill_min, tap_min, d = _simulate_drilling(feat, cut); ops.append(d)
+    except Exception:
+        # a zero feed override (vc_drill/tap_feed=0) must not abort the whole plan
+        drill_min, tap_min = base.times.drilling_min, base.times.tapping_min
 
     # Apply the same risk multipliers the analytic backend uses, for consistency.
     if feat.tight_tolerance:

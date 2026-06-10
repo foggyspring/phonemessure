@@ -74,3 +74,16 @@ def test_declared_holes_take_precedence():
                     QuoteRequest(material="AL6061", quantity=1, holes=[Hole(6.0, 12.0, 2)]),
                     mesh_stl=sb, backend="analytic")
     assert q["geometry"]["holes_auto"] is False
+
+
+def test_scale_gate_applies_to_physical_size_for_inch_parts():
+    # a Ø6mm hole modeled in inches (r=0.118 native) is below the 0.3mm radius
+    # gate unless scale maps native→mm; with scale=25.4 it is detected.
+    box = trimesh.creation.box((1.0, 0.75, 0.4)); box.apply_translation((0.5, 0.375, 0.2))
+    c = trimesh.creation.cylinder(radius=0.118, height=0.6, sections=32)
+    c.apply_translation((0.5, 0.375, 0.2))
+    sb = box.difference(c).export(file_type="stl")
+    assert detect_holes(sb, scale=1.0) == []          # treated as mm → sub-gate, dropped
+    inch = detect_holes(sb, scale=25.4)               # treated as inch → passes physical gate
+    # diameter is reported in native units (the caller scales it); ~0.236" here
+    assert inch and 0.2 < inch[0]["diameter_mm"] < 0.27

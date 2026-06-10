@@ -52,3 +52,20 @@ def test_manual_dims_fallback():
     assert _close(m.bbox_volume_mm3, 100_000.0)
     # Unknown volume -> 55% fill assumption.
     assert _close(m.volume_mm3, 0.55 * 100_000.0)
+
+
+def test_non_finite_vertices_rejected():
+    # a NaN/inf coordinate must fail loudly, not flow into a NaN price.
+    import trimesh
+
+    from cnc.geometry import GeometryError
+    m = trimesh.creation.box((30, 20, 10))
+    v = m.vertices.copy()
+    v[0] = [float("nan"), 0.0, 0.0]
+    bad = trimesh.Trimesh(vertices=v, faces=m.faces, process=False).export(file_type="stl")
+    try:
+        metrics_from_stl_bytes(bad)
+        raised = False
+    except GeometryError:
+        raised = True
+    assert raised

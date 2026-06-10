@@ -92,7 +92,9 @@ def _logistics(shop: ShopData, plan, material, qty: int, quote) -> dict:
     crated = crate_threshold > 0 and order_kg > crate_threshold
     if crated:
         shipping += crate_cny
-    net = quote.requested.unit_price_cny * max(1, qty)
+    # Use the same rounded-unit basis as the quote's min-order floor so the two
+    # surfaces agree on whether the order meets the minimum.
+    net = round(quote.requested.unit_price_cny, 2) * max(1, qty)
     min_order = float(biz.get("min_order_cny", 0))
     return {
         "order_weight_kg": round(order_kg, 3),
@@ -237,7 +239,7 @@ def build_quote(
     detected_holes: list[dict] = []
     if not holes and mesh_stl is not None:
         from .geometry.holes import detect_holes
-        detected_holes = detect_holes(mesh_stl)
+        detected_holes = detect_holes(mesh_stl, scale=unit_scale)
         if detected_holes:
             holes = [Hole(diameter_mm=h["diameter_mm"] * unit_scale,
                           depth_mm=h["depth_mm"] * unit_scale,

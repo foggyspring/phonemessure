@@ -220,6 +220,33 @@ def test_tool_wear_charged_for_hard_materials_not_aluminium():
     assert any("刀具消耗" in n for n in ti["quote"]["notes"])
 
 
+def test_lead_options_total_reconciles_with_unit_times_qty():
+    # the option table must pass the customer's unit×qty hand-check (rounded basis)
+    q = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=9))["quote"]
+    for o in q["lead_time_options"]:
+        assert o["total_cny"] == round(o["unit_price_cny"] * 9, 2)
+    # min-order figures reconcile: line_net + topup == net_total
+    small = build_quote(metrics_from_stl_bytes(cube_stl(20.0)),
+                        QuoteRequest(material="ABS", quantity=1))["quote"]
+    assert round(small["line_net_cny"] + small["min_order_topup_cny"], 2) == small["net_total_cny"]
+
+
+def test_scrap_credit_fraction_is_clamped():
+    # an absurd admin override (frac > 1) must not drive material cost negative
+    from cnc.engine import load
+    from cnc.engine.costing import _material_cost
+    import dataclasses
+    shop = load()
+    from cnc.engine import capp
+    from cnc.geometry.features import analyze
+    import trimesh
+    sb = trimesh.creation.box((40, 40, 40)).export(file_type="stl")
+    mat = dataclasses.replace(shop.material("TITANIUM_TC4"), scrap_credit_frac=5.0)
+    plan = capp.plan(analyze(metrics_from_stl_bytes(sb)), mat, shop)
+    net, gross, credit = _material_cost(plan, mat)
+    assert net >= 0 and credit <= gross
+
+
 def test_large_order_lead_time_extends_with_capacity():
     m = _metrics()
     small = build_quote(m, QuoteRequest(material="AL6061", quantity=1))["quote"]
