@@ -170,6 +170,17 @@ def analyze_dfm(
                       "精密公差需额外检测与慢走刀。",
                       "仅对关键尺寸标注紧公差以控成本。"))
 
+    # ---- standard tolerance vs ISO 2768-m for large parts ----
+    # ISO 2768-m widens with size (30-120: ±0.3, 120-400: ±0.5); our flat
+    # "standard ±0.1" is effectively TIGHTER than 2768-m on large parts — tell
+    # the customer they may be paying for precision they didn't intend.
+    if tol_mm and abs(tol_mm - 0.1) < 1e-9 and longest > 120:
+        iso_m = 0.5 if longest > 120 else 0.3
+        out.append(_f("info", "tol_vs_iso2768", "标准公差对大件偏紧 Tolerance vs ISO 2768",
+                      f"最长边 {longest:.0f}mm 按 ISO 2768-m 一般公差为 ±{iso_m:g}，"
+                      f"当前'标准 ±0.1'实际紧了 {iso_m/0.1:.0f} 倍。",
+                      "若非配合面，可在备注注明按 ISO 2768-m 验收，加工与检验更宽松。"))
+
     # ---- tolerance feasibility vs part size ----
     # Achievable 3-axis accuracy widens with size (thermal growth, fixturing,
     # tool deflection): roughly ±(0.02 + 0.00008·L) mm. A request tighter than

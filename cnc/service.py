@@ -24,7 +24,7 @@ def _assumptions(req, feat, holes_auto: bool, tol_label: str | None,
     Every line states an assumption the price depends on, so the customer knows
     exactly what to confirm or supply (threads, tolerance, heat-treat, stock).
     """
-    out = [f"公差按 {tol_label or '标准 ±0.1'}（仅关键尺寸需紧公差请注明）"]
+    out = [f"公差按 {tol_label or '标准 ±0.1'}，未注尺寸参照 ISO 2768-m（仅关键尺寸需紧公差请注明）"]
     threaded = any(getattr(h, "threaded", False) for h in (req.holes or []))
     if holes_auto:
         out.append("孔为模型自动识别，均按未攻丝通孔计；如需螺纹/沉孔请注明规格")

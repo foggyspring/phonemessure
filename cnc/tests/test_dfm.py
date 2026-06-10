@@ -138,3 +138,19 @@ def test_non_watertight_mesh_flagged():
                     mesh_stl=sb, backend="analytic")
     assert any(d["code"] == "open_mesh" for d in q["dfm"])
     assert any("非水密" in r for r in q["confidence"]["reasons"])
+
+
+def test_standard_tolerance_flagged_as_tight_for_large_parts():
+    # per ISO 2768-m a 300mm part's general tolerance is ±0.5 — our flat
+    # "standard ±0.1" is 5x tighter, so the customer deserves a heads-up.
+    import trimesh
+    big = trimesh.creation.box((300, 100, 30)); big.apply_translation((150, 50, 15))
+    sb = big.export(file_type="stl")
+    q = build_quote(metrics_from_stl_bytes(sb),
+                    QuoteRequest(material="AL6061", quantity=5, tolerance="standard"),
+                    mesh_stl=sb, backend="analytic")
+    assert any(d["code"] == "tol_vs_iso2768" for d in q["dfm"])
+    # small parts (where ±0.1 ≈ 2768-m) must NOT nag
+    small = build_quote(metrics_from_stl_bytes(cube_stl(50.0)),
+                        QuoteRequest(material="AL6061", quantity=5, tolerance="standard"))
+    assert not any(d["code"] == "tol_vs_iso2768" for d in small["dfm"])
