@@ -1,5 +1,18 @@
 # phonemessure
 
+> 本仓库含两个子系统：手机测量工具（下文）与 **CNC 智能报价引擎**（`cnc/`）。
+>
+> **CNC 报价引擎** — 上传 3D 图纸即得透明成本/交期报价，内置可引导整条研究流程的
+> AI 分析伙伴与多文件批量报价。**带截图的使用说明见 [doc/USER-GUIDE.md](doc/USER-GUIDE.md)**
+> （另有 [成本模型](doc/cost-model.md) · [价格维护](doc/price-maintenance.md) ·
+> [AI 助手](doc/ai-copilot.md)）。快速启动：
+> ```bash
+> pip install -e . && export CNC_ADMIN_PASSWORD=...   # 见 USER-GUIDE
+> uvicorn cnc.api:app --port 8000   # 打开 http://localhost:8000
+> ```
+
+---
+
 > 手机当镜头，MacBook 跑模型。
 
 ```
