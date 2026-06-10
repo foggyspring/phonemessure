@@ -32,7 +32,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, store
-from .engine import ShopData, apply_custom_materials, apply_overrides, load
+from .engine import (
+    ShopData,
+    apply_custom_finishes,
+    apply_custom_machines,
+    apply_custom_materials,
+    apply_overrides,
+    load,
+)
 from .geometry import GeometryError, MeshMetrics
 from .geometry.parser import (
     KernelUnavailable,
@@ -58,6 +65,8 @@ def _effective_shop() -> tuple[ShopData, dict]:
     # operator-added materials are merged BEFORE market/override layers so their
     # price can be live-fed and field-tweaked exactly like a builtin material.
     base = apply_custom_materials(base, store.get_custom_materials())
+    base = apply_custom_machines(base, store.get_custom_machines())
+    base = apply_custom_finishes(base, store.get_custom_finishes())   # after materials: apply_to may target customs
     market_shop, sources = apply_market_prices(base, get_price_service())
     overrides = store.get_overrides()
     shop = apply_overrides(market_shop, overrides)

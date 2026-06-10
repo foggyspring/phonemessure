@@ -83,6 +83,16 @@ CREATE TABLE IF NOT EXISTS custom_materials (
     data        TEXT NOT NULL,      -- JSON: a full Material dict added by an operator
     updated_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS custom_finishes (
+    key         TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,      -- JSON: operator-added finish (电镀/PVD…)
+    updated_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS custom_machines (
+    key         TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,      -- JSON: operator-added machine
+    updated_at  TEXT NOT NULL
+);
 """
 
 
@@ -252,12 +262,18 @@ def delete_skill(key: str, *, path: str | os.PathLike | None = None) -> int:
         return conn.execute("DELETE FROM ai_skills WHERE key=?", (key,)).rowcount
 
 
-# -------------------------------------------------- custom materials -------
-def get_custom_materials(*, path: str | os.PathLike | None = None) -> dict:
-    """Return {key: material-dict} of operator-added materials."""
+# ------------------------------------------- custom entities (人工层) -------
+# One human layer per catalog kind: operator-added materials / finishes /
+# machines, all following the same add/edit/delete + override-cleanup shape.
+_CUSTOM_TABLES = {"material": "custom_materials", "finish": "custom_finishes",
+                  "machine": "custom_machines"}
+
+
+def _get_custom(kind: str, *, path: str | os.PathLike | None = None) -> dict:
+    table = _CUSTOM_TABLES[kind]
     out: dict[str, dict] = {}
     with _session(path) as conn:
-        for r in conn.execute("SELECT key, data FROM custom_materials"):
+        for r in conn.execute(f"SELECT key, data FROM {table}"):
             try:
                 out[r["key"]] = json.loads(r["data"])
             except (ValueError, TypeError):
@@ -265,19 +281,32 @@ def get_custom_materials(*, path: str | os.PathLike | None = None) -> dict:
     return out
 
 
-def save_custom_material(key: str, data: dict, *, path: str | os.PathLike | None = None) -> None:
+def _save_custom(kind: str, key: str, data: dict, *, path: str | os.PathLike | None = None) -> None:
+    table = _CUSTOM_TABLES[kind]
     with _session(path) as conn:
         conn.execute(
-            "INSERT INTO custom_materials (key, data, updated_at) VALUES (?,?,?) "
+            f"INSERT INTO {table} (key, data, updated_at) VALUES (?,?,?) "
             "ON CONFLICT(key) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
             (key, json.dumps(data, ensure_ascii=False), _now()))
 
 
-def delete_custom_material(key: str, *, path: str | os.PathLike | None = None) -> int:
-    """Delete a custom material; its price overrides are cleared too. Returns rows."""
+def _delete_custom(kind: str, key: str, *, path: str | os.PathLike | None = None) -> int:
+    """Delete a custom entity; its price overrides are cleared too."""
+    table = _CUSTOM_TABLES[kind]
     with _session(path) as conn:
-        conn.execute("DELETE FROM price_overrides WHERE kind='material' AND key=?", (key,))
-        return conn.execute("DELETE FROM custom_materials WHERE key=?", (key,)).rowcount
+        conn.execute("DELETE FROM price_overrides WHERE kind=? AND key=?", (kind, key))
+        return conn.execute(f"DELETE FROM {table} WHERE key=?", (key,)).rowcount
+
+
+def get_custom_materials(*, path=None) -> dict: return _get_custom("material", path=path)
+def save_custom_material(key, data, *, path=None) -> None: _save_custom("material", key, data, path=path)
+def delete_custom_material(key, *, path=None) -> int: return _delete_custom("material", key, path=path)
+def get_custom_finishes(*, path=None) -> dict: return _get_custom("finish", path=path)
+def save_custom_finish(key, data, *, path=None) -> None: _save_custom("finish", key, data, path=path)
+def delete_custom_finish(key, *, path=None) -> int: return _delete_custom("finish", key, path=path)
+def get_custom_machines(*, path=None) -> dict: return _get_custom("machine", path=path)
+def save_custom_machine(key, data, *, path=None) -> None: _save_custom("machine", key, data, path=path)
+def delete_custom_machine(key, *, path=None) -> int: return _delete_custom("machine", key, path=path)
 
 
 def clear_overrides(*, path: str | os.PathLike | None = None) -> None:

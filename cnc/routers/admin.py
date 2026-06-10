@@ -90,8 +90,10 @@ def set_price(body: dict, _admin: dict = Depends(require_admin)) -> dict:
     if kind in ("material", "machine", "finish"):
         catalog = {"material": shop.materials, "machine": shop.machines,
                    "finish": shop.finishes}[kind]
-        # custom (operator-added) materials live outside load() — accept them too
-        custom_keys = set(store.get_custom_materials()) if kind == "material" else set()
+        # custom (operator-added) entities live outside load() — accept them too
+        custom_keys = {"material": lambda: store.get_custom_materials(),
+                       "finish": lambda: store.get_custom_finishes(),
+                       "machine": lambda: store.get_custom_machines()}[kind]()
         if key not in catalog and key not in custom_keys:
             raise HTTPException(status_code=404, detail=f"unknown {kind} '{key}'")
         if field not in _OVERRIDE_FIELDS[kind]:
@@ -256,6 +258,77 @@ def delete_custom_material(key: str, _admin: dict = Depends(require_admin)) -> d
         raise HTTPException(status_code=400, detail="内置材料不可删除")
     n = store.delete_custom_material(key)
     store.add_audit(_admin.get("u", "?"), "delete_material", f"{key} (n={n})")
+    return {"ok": True, "deleted": n}
+
+
+@router.get("/api/admin/finishes")
+def list_custom_finishes(_admin: dict = Depends(require_admin)) -> dict:
+    shop = load()
+    return {"custom": store.get_custom_finishes(),
+            "builtin_keys": list(shop.finishes),
+            "materials": list(shop.materials) + list(store.get_custom_materials())}
+
+
+@router.put("/api/admin/finishes")
+def upsert_custom_finish(body: dict, _admin: dict = Depends(require_admin)) -> dict:
+    """Add/edit an operator-defined finish (电镀/PVD…) and attach it to materials."""
+    from ..engine.shopdata import validate_finish
+    key = str(body.get("key") or "").strip()
+    if key in load().finishes:
+        raise HTTPException(status_code=400, detail=f"'{key}' 是内置工艺，请用价格维护页编辑")
+    valid_mats = set(load().materials) | set(store.get_custom_materials())
+    try:
+        fin, apply_to = validate_finish(key, body, valid_materials=valid_mats)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    existed = key in store.get_custom_finishes()
+    store.save_custom_finish(key, {"label": fin.label, "setup_cny": fin.setup_cny,
+                                   "per_dm2_cny": fin.per_dm2_cny, "min_cny": fin.min_cny,
+                                   "lead_days": fin.lead_days, "apply_to": apply_to})
+    store.add_audit(_admin.get("u", "?"), "save_finish",
+                    f"{'edit' if existed else 'add'} {key} (¥{fin.per_dm2_cny:g}/dm², 适用 {len(apply_to)} 种材料)")
+    return {"ok": True, "key": key, "edited": existed}
+
+
+@router.delete("/api/admin/finishes/{key}")
+def delete_custom_finish(key: str, _admin: dict = Depends(require_admin)) -> dict:
+    if key in load().finishes:
+        raise HTTPException(status_code=400, detail="内置工艺不可删除")
+    n = store.delete_custom_finish(key)
+    store.add_audit(_admin.get("u", "?"), "delete_finish", f"{key} (n={n})")
+    return {"ok": True, "deleted": n}
+
+
+@router.get("/api/admin/machines")
+def list_custom_machines(_admin: dict = Depends(require_admin)) -> dict:
+    return {"custom": store.get_custom_machines(), "builtin_keys": list(load().machines)}
+
+
+@router.put("/api/admin/machines")
+def upsert_custom_machine(body: dict, _admin: dict = Depends(require_admin)) -> dict:
+    """Add/edit an operator-defined machine (a new cell on the floor)."""
+    from ..engine.shopdata import validate_machine
+    key = str(body.get("key") or "").strip()
+    if key in load().machines:
+        raise HTTPException(status_code=400, detail=f"'{key}' 是内置机床，请用价格维护页编辑")
+    try:
+        m = validate_machine(key, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    existed = key in store.get_custom_machines()
+    store.save_custom_machine(key, {"label": m.label, "rate_cny_per_hour": m.rate_cny_per_hour,
+                                    "base_mrr_cm3_min": m.base_mrr_cm3_min, "max_axes": m.max_axes})
+    store.add_audit(_admin.get("u", "?"), "save_machine",
+                    f"{'edit' if existed else 'add'} {key} (¥{m.rate_cny_per_hour:g}/h, {m.max_axes}轴)")
+    return {"ok": True, "key": key, "edited": existed}
+
+
+@router.delete("/api/admin/machines/{key}")
+def delete_custom_machine(key: str, _admin: dict = Depends(require_admin)) -> dict:
+    if key in load().machines:
+        raise HTTPException(status_code=400, detail="内置机床不可删除")
+    n = store.delete_custom_machine(key)
+    store.add_audit(_admin.get("u", "?"), "delete_machine", f"{key} (n={n})")
     return {"ok": True, "deleted": n}
 
 

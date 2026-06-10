@@ -129,3 +129,78 @@ def test_custom_material_collisions_and_deletion(client):
     # all of it is audited
     actions = [a["action"] for a in client.get("/api/admin/audit", headers=h).json()["audit"]]
     assert "save_material" in actions and "delete_material" in actions
+
+
+# ---- custom finishes (电镀/PVD…) ----
+def test_custom_finish_attaches_to_materials_and_quotes(client):
+    h = _h(client)
+    r = client.put("/api/admin/finishes", headers=h, json={
+        "key": "nickel_plating", "label": "镀镍", "setup_cny": 60, "per_dm2_cny": 18,
+        "min_cny": 80, "lead_days": 3, "apply_to": ["SUS304"]})
+    assert r.status_code == 200
+    mats = client.get("/api/materials").json()
+    assert "nickel_plating" in mats["finishes"]
+    assert "nickel_plating" in mats["materials"]["SUS304"]["finish_ok"]
+    assert "nickel_plating" not in mats["materials"]["AL6061"]["finish_ok"]  # not applied
+    # it quotes, and the outsourcing lead extends delivery
+    import trimesh
+    sb = trimesh.creation.box((80, 60, 25)).export(file_type="stl")
+    q = client.post("/api/quote", files={"file": ("p.stl", sb)},
+                    data={"params": '{"material":"SUS304","quantity":10,"finish":"nickel_plating"}'})
+    assert q.status_code == 200
+    assert q.json()["quote"]["lead_days"] >= 13          # standard 10 + outsourcing 3
+    # price tab works on the custom finish
+    assert client.put("/api/admin/price", headers=h, json={
+        "kind": "finish", "key": "nickel_plating", "field": "per_dm2_cny",
+        "value": 22}).status_code == 200
+    # deleting it retracts the material option too
+    assert client.request("DELETE", "/api/admin/finishes/nickel_plating", headers=h).json()["ok"]
+    assert "nickel_plating" not in client.get("/api/materials").json()["materials"]["SUS304"]["finish_ok"]
+
+
+def test_custom_finish_validation(client):
+    h = _h(client)
+    # no apply_to → useless process → rejected
+    assert client.put("/api/admin/finishes", headers=h, json={
+        "key": "pvd", "label": "PVD", "apply_to": []}).status_code == 400
+    # unknown material in apply_to → rejected
+    assert client.put("/api/admin/finishes", headers=h, json={
+        "key": "pvd", "label": "PVD", "apply_to": ["UNOBTAINIUM"]}).status_code == 400
+    # builtin finish cannot be shadowed or deleted
+    assert client.put("/api/admin/finishes", headers=h, json={
+        "key": "anodize_clear", "label": "x", "apply_to": ["AL6061"]}).status_code == 400
+    assert client.request("DELETE", "/api/admin/finishes/anodize_clear",
+                          headers=h).status_code == 400
+
+
+# ---- custom machines ----
+def test_custom_machine_selectable_and_priced(client):
+    h = _h(client)
+    assert client.put("/api/admin/machines", headers=h, json={
+        "key": "mill_hsm", "label": "高速加工中心", "rate_cny_per_hour": 90,
+        "base_mrr_cm3_min": 45, "max_axes": 3}).status_code == 200
+    import trimesh
+    sb = trimesh.creation.box((80, 60, 25)).export(file_type="stl")
+    q = client.post("/api/quote", files={"file": ("p.stl", sb)},
+                    data={"params": '{"material":"AL6061","quantity":10,"machine":"mill_hsm"}'})
+    assert q.status_code == 200
+    assert q.json()["quote"]["machine_rate_cny_h"] == 90.0
+    # rate maintainable via the price tab
+    assert client.put("/api/admin/price", headers=h, json={
+        "kind": "machine", "key": "mill_hsm", "field": "rate_cny_per_hour",
+        "value": 100}).status_code == 200
+
+
+def test_custom_machine_validation(client):
+    h = _h(client)
+    assert client.put("/api/admin/machines", headers=h, json={
+        "key": "mill_3axis", "label": "x", "rate_cny_per_hour": 1,
+        "base_mrr_cm3_min": 1}).status_code == 400          # builtin collision
+    assert client.put("/api/admin/machines", headers=h, json={
+        "key": "m7", "label": "七轴", "rate_cny_per_hour": 50,
+        "base_mrr_cm3_min": 20, "max_axes": 7}).status_code == 400   # bad axes
+    assert client.put("/api/admin/machines", headers=h, json={
+        "key": "m0", "label": "零率", "rate_cny_per_hour": 0,
+        "base_mrr_cm3_min": 20}).status_code == 400          # non-positive rate
+    assert client.request("DELETE", "/api/admin/machines/mill_3axis",
+                          headers=h).status_code == 400

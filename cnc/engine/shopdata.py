@@ -199,6 +199,94 @@ def apply_custom_materials(shop: ShopData, customs: dict | None) -> ShopData:
     return replace(shop, materials=materials)
 
 
+# ---- operator-defined finishes / machines (人工层, same shape as materials) ----
+def validate_finish(key: str, d: dict, *, valid_materials: set[str] | None = None) -> tuple["Finish", list[str]]:
+    """Build a Finish from operator input; raise ValueError on bad shape.
+
+    Returns (finish, apply_to) — apply_to lists the material keys whose
+    finish_ok gains this process (a new 电镀/PVD is useless until at least one
+    material allows it)."""
+    key = str(key or "").strip()
+    if not key or not key.replace("_", "").replace("-", "").isalnum():
+        raise ValueError("工艺代号 key 必须是字母/数字/下划线/连字符")
+    if not str(d.get("label") or "").strip():
+        raise ValueError("缺少必填字段：label")
+    nums = {}
+    for f in ("setup_cny", "per_dm2_cny", "min_cny"):
+        try:
+            nums[f] = float(d.get(f, 0) or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"字段 {f} 类型错误：{exc}") from exc
+        if nums[f] < 0:
+            raise ValueError(f"{f} 不能为负")
+    lead = int(d.get("lead_days", 0) or 0)
+    if lead < 0 or lead > 60:
+        raise ValueError("lead_days 必须在 0..60")
+    apply_to = [str(x) for x in (d.get("apply_to") or [])]
+    if not apply_to:
+        raise ValueError("至少选择一种适用材料 apply_to（否则新工艺无处可用）")
+    if valid_materials is not None:
+        bad = [x for x in apply_to if x not in valid_materials]
+        if bad:
+            raise ValueError(f"apply_to 含未知材料: {bad}")
+    fin = Finish(key=key, label=str(d["label"]), setup_cny=nums["setup_cny"],
+                 per_dm2_cny=nums["per_dm2_cny"], min_cny=nums["min_cny"], lead_days=lead)
+    return fin, apply_to
+
+
+def apply_custom_finishes(shop: ShopData, customs: dict | None) -> ShopData:
+    """Merge operator-added finishes AND extend the referenced materials'
+    finish_ok so the new process is actually selectable (skips invalid rows)."""
+    if not customs:
+        return shop
+    finishes = dict(shop.finishes)
+    materials = dict(shop.materials)
+    for key, d in customs.items():
+        try:
+            fin, apply_to = validate_finish(key, d, valid_materials=set(materials))
+        except ValueError:
+            continue
+        finishes[key] = fin
+        for mk in apply_to:
+            m = materials.get(mk)
+            if m is not None and key not in m.finish_ok:
+                materials[mk] = replace(m, finish_ok=(*m.finish_ok, key))
+    return replace(shop, finishes=finishes, materials=materials)
+
+
+def validate_machine(key: str, d: dict) -> "Machine":
+    """Build a Machine from operator input; raise ValueError on bad shape."""
+    key = str(key or "").strip()
+    if not key or not key.replace("_", "").replace("-", "").isalnum():
+        raise ValueError("机床代号 key 必须是字母/数字/下划线/连字符")
+    if not str(d.get("label") or "").strip():
+        raise ValueError("缺少必填字段：label")
+    try:
+        rate = float(d.get("rate_cny_per_hour"))
+        mrr = float(d.get("base_mrr_cm3_min"))
+        axes = int(d.get("max_axes", 3))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"数值字段类型错误：{exc}") from exc
+    if rate <= 0 or mrr <= 0:
+        raise ValueError("rate_cny_per_hour / base_mrr_cm3_min 必须为正数")
+    if axes not in (3, 4, 5):
+        raise ValueError("max_axes 必须是 3/4/5")
+    return Machine(key=key, label=str(d["label"]), rate_cny_per_hour=rate,
+                   base_mrr_cm3_min=mrr, max_axes=axes)
+
+
+def apply_custom_machines(shop: ShopData, customs: dict | None) -> ShopData:
+    if not customs:
+        return shop
+    machines = dict(shop.machines)
+    for key, d in customs.items():
+        try:
+            machines[key] = validate_machine(key, d)
+        except ValueError:
+            continue
+    return replace(shop, machines=machines)
+
+
 # Fields an admin/supplier feed is allowed to override at runtime, per kind.
 _OVERRIDE_FIELDS = {
     "material": {"price_cny_per_kg", "machinability", "density_g_cm3",
