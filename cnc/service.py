@@ -337,7 +337,8 @@ def build_quote(
                       requires_5axis=req.requires_5axis, max_part_mm=max_part or None,
                       wall_auto=auto_wall is not None, holes_auto=holes_auto,
                       watertight=mesh_watertight,
-                      tol_mm=float(tol["tol_mm"]) if tol and tol.get("tol_mm") else None)
+                      tol_mm=float(tol["tol_mm"]) if tol and tol.get("tol_mm") else None,
+                      machinability=material.machinability)
 
     return {
         "input": {

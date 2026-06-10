@@ -154,3 +154,18 @@ def test_standard_tolerance_flagged_as_tight_for_large_parts():
     small = build_quote(metrics_from_stl_bytes(cube_stl(50.0)),
                         QuoteRequest(material="AL6061", quantity=5, tolerance="standard"))
     assert not any(d["code"] == "tol_vs_iso2768" for d in small["dfm"])
+
+
+def test_hard_material_tapping_warns_thread_milling():
+    holes = [Hole(diameter_mm=6.0, depth_mm=12.0, count=8, threaded=True)]
+    ti = build_quote(metrics_from_stl_bytes(cube_stl(50.0)),
+                     QuoteRequest(material="TITANIUM_TC4", quantity=2, holes=holes))
+    assert any(d["code"] == "hard_tap" for d in ti["dfm"])
+    # aluminium tapping is routine — no warning
+    al = build_quote(metrics_from_stl_bytes(cube_stl(50.0)),
+                     QuoteRequest(material="AL6061", quantity=2, holes=holes))
+    assert not any(d["code"] == "hard_tap" for d in al["dfm"])
+    # hard material WITHOUT threads — no warning either
+    ti2 = build_quote(metrics_from_stl_bytes(cube_stl(50.0)),
+                      QuoteRequest(material="TITANIUM_TC4", quantity=2))
+    assert not any(d["code"] == "hard_tap" for d in ti2["dfm"])

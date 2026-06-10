@@ -48,6 +48,7 @@ def analyze_dfm(
     holes_auto: bool = False,
     watertight: bool = True,
     tol_mm: float | None = None,
+    machinability: float = 1.0,
 ) -> list[dict]:
     out: list[dict] = []
     dims = sorted(metrics.dims_mm)
@@ -145,6 +146,17 @@ def analyze_dfm(
                               f"Ø{d:g} 螺纹有效深度 {depth:g}mm（约 {eng:.1f}×D），"
                               "铝/塑料推荐 1.5–2×D 以保证强度。",
                               "加深螺纹孔，或改用螺纹护套(钢丝螺套)提升承载。"))
+
+    # ---- hard material + tapping: a broken tap scraps the part ----
+    # (skill faq_thread_mill, sourced: tap torque rises steeply with material
+    # hardness; thread milling is the safe choice on Ti/SS — a broken thread
+    # mill doesn't scrap the part, a broken tap does.)
+    n_tapped = sum(h.count for h in feat.holes if h.threaded)
+    if n_tapped and machinability >= 2.5:
+        out.append(_f("medium", "hard_tap", "难加工材料攻丝风险 Hard-material tapping",
+                      f"该材料可加工性 {machinability:g}（钛/不锈钢级），{n_tapped} 个螺纹孔"
+                      "攻丝扭矩大、断锥即报废零件。",
+                      "建议改螺纹铣（断刀不报废件、可控深度），或确认允许丝锥加工并接受风险。"))
 
     # ---- undercut / faces unreachable from ±axis (3-axis can't reach) ----
     if not requires_5axis and feat.undercut_frac > 0.2:
