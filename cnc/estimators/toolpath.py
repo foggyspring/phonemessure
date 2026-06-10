@@ -279,7 +279,13 @@ def _simulate_drilling(feat: FeatureSet, cut: dict) -> tuple[float, float, dict]
         drill_feed = _drill_feed(cut, h.diameter_mm)
         peck = max(1, math.ceil(h.depth_mm / max(3.0 * h.diameter_mm, 1e-3)))
         in_time = h.depth_mm / drill_feed
-        retract_time = peck * (h.depth_mm / peck) / (cut["plunge_feed_mm_min"]) * 0.4
+        # Peck retract/re-plunge overhead GROWS with the peck count: each peck
+        # clears chips by retracting and rapiding back to just above the last
+        # depth, so the repositioning travel ≈ Σ(current depth) = depth·(peck+1)/2.
+        # (The old form `peck*(depth/peck)` cancelled to depth, ignoring pecks.)
+        peck_depth = h.depth_mm / peck
+        reposition = peck_depth * peck * (peck + 1) / 2.0     # = depth·(peck+1)/2
+        retract_time = reposition / max(cut["plunge_feed_mm_min"], 1e-6)
         per = in_time + retract_time
         drill_min += per * h.count
         total_depth += h.depth_mm * h.count

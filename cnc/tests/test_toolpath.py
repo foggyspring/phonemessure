@@ -60,6 +60,21 @@ def test_threaded_holes_add_tapping_toolpath():
     assert plan.times.drilling_min > 0
 
 
+def test_deep_peck_drilling_costs_more_per_mm_than_shallow():
+    # peck retract/re-plunge overhead must grow with peck count: a deep hole
+    # (many pecks) costs disproportionately more drilling time per mm of depth
+    # than a shallow one of the same diameter (regression for the peck-cancel bug).
+    cut, _tools = tp._derive(tp._load_cutting(), "AL6061")
+    shallow, _, _ = tp._simulate_drilling(
+        analyze(metrics_from_stl_bytes(cube_stl(50.0)),
+                holes=[Hole(diameter_mm=6.0, depth_mm=10.0, count=1)]), cut)
+    deep, _, _ = tp._simulate_drilling(
+        analyze(metrics_from_stl_bytes(cube_stl(50.0)),
+                holes=[Hole(diameter_mm=6.0, depth_mm=80.0, count=1)]), cut)
+    # 8× the depth but far more than 8× the time, because pecks pile up
+    assert deep > shallow * 8.0
+
+
 def test_make_plan_auto_uses_toolpath_with_mesh():
     from cnc import estimators
     shop = load()
