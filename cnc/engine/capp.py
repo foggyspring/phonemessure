@@ -234,6 +234,16 @@ def plan(
         drilling_min += per_hole * h.count
         if h.threaded:
             tapping_min += capp["tap_min_per_hole"] * material.machinability * h.count
+    # Precision tolerance classes imply drill+REAM hole-making (drilling alone
+    # holds only ~H12-H14; H7 needs a reamer pass, 0.1-0.3mm/side stock) — a
+    # real extra operation per hole that a flat machining_factor under-counts.
+    tol_for_holes = feat.tolerance
+    if feat.holes and ((tol_for_holes and float(tol_for_holes.get("machining_factor", 1.0)) > 1.0)
+                       or (tol_for_holes is None and feat.tight_tolerance)):
+        n_holes = sum(h.count for h in feat.holes)
+        ream = capp.get("ream_min_per_hole", 1.2) * material.machinability * n_holes
+        drilling_min += ream
+        notes.append(f"精密公差：孔按钻+铰工艺，铰孔 +{ream:.1f}min（{n_holes} 孔）")
 
     # ---- Setups, tool changes, inspection ----
     setups = _estimate_setups(feat, machine)

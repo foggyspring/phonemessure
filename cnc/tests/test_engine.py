@@ -440,3 +440,19 @@ def test_unit_suspect_part_is_low_confidence():
     # normal part is not penalised
     ok = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=10))
     assert ok["confidence"]["score"] > tiny["confidence"]["score"]
+
+
+def test_precision_tolerance_adds_reaming_time_per_hole():
+    # drilling alone holds H12-H14; precision/ultra implies drill+ream — the
+    # hole-making cost must grow with hole COUNT, not just the global factor.
+    holes = [Hole(diameter_mm=8.0, depth_mm=20.0, count=6)]
+    std = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=5,
+                                               tolerance="standard", holes=holes))
+    pre = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=5,
+                                               tolerance="precision", holes=holes))
+    d_std = std["plan"]["times"]["drilling_min"]
+    d_pre = pre["plan"]["times"]["drilling_min"]
+    assert d_pre > d_std + 6 * 1.0          # ≥ ~1.2min × 6 holes (machinability 1.0)
+    assert any("钻+铰" in n for n in pre["plan"]["notes"])
+    # standard class: no reaming surcharge
+    assert not any("钻+铰" in n for n in std["plan"]["notes"])

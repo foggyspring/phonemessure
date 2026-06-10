@@ -20,6 +20,7 @@
     "drill_min_per_hole_base": 0.35,
     "drill_min_per_mm_depth": 0.04,
     "tap_min_per_hole": 0.9,
+    "ream_min_per_hole": 1.2,
     "fixture_min_per_setup": 12.0,
     "toolchange_min_per_tool": 0.5,
     "programming_min_base": 50.0,

@@ -160,7 +160,7 @@ _CAPP_OVERRIDABLE = {
     "fixture_min_per_setup", "toolchange_min_per_tool", "programming_min_base",
     "programming_min_per_complexity", "first_article_min",
     "tight_tolerance_machining_factor", "tight_tolerance_inspection_min_per_part",
-    "inspection_min_per_feature",
+    "inspection_min_per_feature", "ream_min_per_hole",
     "min_machine_min_per_part", "stock_margin_mm",
 }
 
