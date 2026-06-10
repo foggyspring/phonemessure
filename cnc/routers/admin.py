@@ -90,7 +90,9 @@ def set_price(body: dict, _admin: dict = Depends(require_admin)) -> dict:
     if kind in ("material", "machine", "finish"):
         catalog = {"material": shop.materials, "machine": shop.machines,
                    "finish": shop.finishes}[kind]
-        if key not in catalog:
+        # custom (operator-added) materials live outside load() — accept them too
+        custom_keys = set(store.get_custom_materials()) if kind == "material" else set()
+        if key not in catalog and key not in custom_keys:
             raise HTTPException(status_code=404, detail=f"unknown {kind} '{key}'")
         if field not in _OVERRIDE_FIELDS[kind]:
             raise HTTPException(status_code=400, detail=f"field '{field}' not overridable for {kind}")
@@ -204,6 +206,57 @@ def delete_skill(key: str, _admin: dict = Depends(require_admin)) -> dict:
     store.add_audit(_admin.get("u", "?"), "delete_skill",
                     f"{key} ({'reverted builtin' if sk.is_builtin(key) else 'deleted custom'}, n={n})")
     return {"ok": True, "reverted": n, "builtin": sk.is_builtin(key)}
+
+
+# ------------------------------------------------- custom material library --
+@router.get("/api/admin/materials")
+def list_custom_materials(_admin: dict = Depends(require_admin)) -> dict:
+    """Operator-added materials + the field template for the add form."""
+    from ..engine.shopdata import (
+        _MATERIAL_CATEGORIES,
+        _MATERIAL_OPTIONAL,
+        _MATERIAL_REQUIRED,
+    )
+    return {
+        "custom": store.get_custom_materials(),
+        "builtin_keys": list(load().materials),
+        "finishes": [k for k in load().finishes],
+        "categories": list(_MATERIAL_CATEGORIES),
+        "required_fields": list(_MATERIAL_REQUIRED),
+        "optional_fields": list(_MATERIAL_OPTIONAL),
+    }
+
+
+@router.put("/api/admin/materials")
+def upsert_custom_material(body: dict, _admin: dict = Depends(require_admin)) -> dict:
+    """Add or edit an operator-defined material (no code change / restart)."""
+    from ..engine.shopdata import validate_material
+    key = str(body.get("key") or "").strip()
+    if key in load().materials:
+        raise HTTPException(status_code=400, detail=f"'{key}' 是内置材料，请用价格维护页编辑")
+    try:
+        mat = validate_material(key, body, valid_finishes=set(load().finishes))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    data = {"label": mat.label, "category": mat.category, "density_g_cm3": mat.density_g_cm3,
+            "price_cny_per_kg": mat.price_cny_per_kg, "machinability": mat.machinability,
+            "tensile_mpa": mat.tensile_mpa, "scrap_credit_frac": mat.scrap_credit_frac,
+            "form_factor": mat.form_factor, "stock_lead_days": mat.stock_lead_days,
+            "metal_basis": mat.metal_basis, "finish_ok": list(mat.finish_ok)}
+    existed = key in store.get_custom_materials()
+    store.save_custom_material(key, data)
+    store.add_audit(_admin.get("u", "?"), "save_material",
+                    f"{'edit' if existed else 'add'} {key} ({mat.category}, ¥{mat.price_cny_per_kg:g}/kg)")
+    return {"ok": True, "key": key, "edited": existed}
+
+
+@router.delete("/api/admin/materials/{key}")
+def delete_custom_material(key: str, _admin: dict = Depends(require_admin)) -> dict:
+    if key in load().materials:
+        raise HTTPException(status_code=400, detail="内置材料不可删除")
+    n = store.delete_custom_material(key)
+    store.add_audit(_admin.get("u", "?"), "delete_material", f"{key} (n={n})")
+    return {"ok": True, "deleted": n}
 
 
 @router.delete("/api/admin/price")

@@ -131,6 +131,74 @@ def load(data_dir: str | None = None) -> ShopData:
     )
 
 
+# ---- operator-defined materials (panel "新增材料") ----
+# Required + optional fields when a custom material is added at runtime. Validated
+# here so a bad payload can't crash the costing engine downstream.
+_MATERIAL_CATEGORIES = ("metal", "plastic")
+_MATERIAL_REQUIRED = {"label": str, "category": str, "density_g_cm3": float,
+                      "price_cny_per_kg": float, "machinability": float}
+_MATERIAL_OPTIONAL = {"tensile_mpa": 0.0, "scrap_credit_frac": 0.0,
+                      "form_factor": 0.0, "stock_lead_days": 0,
+                      "metal_basis": None, "finish_ok": None}
+
+
+def validate_material(key: str, d: dict, *, valid_finishes: set[str] | None = None) -> "Material":
+    """Build a Material from operator input; raise ValueError on bad shape.
+
+    Returns a ready-to-merge Material. finish_ok is intersected with the real
+    finish catalog (so a typo can't point at a non-existent finish)."""
+    key = str(key or "").strip()
+    if not key or not key.replace("_", "").replace("-", "").isalnum():
+        raise ValueError("材料代号 key 必须是字母/数字/下划线/连字符")
+    vals: dict = {}
+    for f, typ in _MATERIAL_REQUIRED.items():
+        if d.get(f) in (None, ""):
+            raise ValueError(f"缺少必填字段：{f}")
+        try:
+            vals[f] = typ(d[f])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"字段 {f} 类型错误：{exc}") from exc
+    if vals["category"] not in _MATERIAL_CATEGORIES:
+        raise ValueError(f"category 必须是 {_MATERIAL_CATEGORIES}")
+    for f in ("density_g_cm3", "price_cny_per_kg", "machinability"):
+        if vals[f] <= 0:
+            raise ValueError(f"{f} 必须为正数")
+    if not (0.0 <= float(d.get("scrap_credit_frac", 0.0)) <= 1.0):
+        raise ValueError("scrap_credit_frac 必须在 0..1")
+    finish_ok = d.get("finish_ok")
+    if not finish_ok:
+        finish_ok = ["none"]
+    finish_ok = [str(x) for x in finish_ok]
+    if "none" not in finish_ok:
+        finish_ok = ["none", *finish_ok]
+    if valid_finishes is not None:
+        finish_ok = [x for x in finish_ok if x in valid_finishes]
+    return Material(
+        key=key, label=str(vals["label"]), category=vals["category"],
+        density_g_cm3=vals["density_g_cm3"], price_cny_per_kg=vals["price_cny_per_kg"],
+        machinability=vals["machinability"], finish_ok=tuple(finish_ok),
+        tensile_mpa=float(d.get("tensile_mpa", 0.0) or 0.0),
+        stock_lead_days=int(d.get("stock_lead_days", 0) or 0),
+        metal_basis=(str(d["metal_basis"]) if d.get("metal_basis") else None),
+        form_factor=float(d.get("form_factor", 0.0) or 0.0),
+        scrap_credit_frac=float(d.get("scrap_credit_frac", 0.0) or 0.0),
+    )
+
+
+def apply_custom_materials(shop: ShopData, customs: dict | None) -> ShopData:
+    """Merge operator-added materials into the catalog (skips invalid ones)."""
+    if not customs:
+        return shop
+    materials = dict(shop.materials)
+    valid_finishes = set(shop.finishes)
+    for key, d in customs.items():
+        try:
+            materials[key] = validate_material(key, d, valid_finishes=valid_finishes)
+        except ValueError:
+            continue            # a corrupted row never breaks the whole shop
+    return replace(shop, materials=materials)
+
+
 # Fields an admin/supplier feed is allowed to override at runtime, per kind.
 _OVERRIDE_FIELDS = {
     "material": {"price_cny_per_kg", "machinability", "density_g_cm3",

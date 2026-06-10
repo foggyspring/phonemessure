@@ -78,6 +78,11 @@ CREATE TABLE IF NOT EXISTS ai_skills (
     data        TEXT NOT NULL,      -- JSON: full custom skill, or partial patch for a builtin
     updated_at  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS custom_materials (
+    key         TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,      -- JSON: a full Material dict added by an operator
+    updated_at  TEXT NOT NULL
+);
 """
 
 
@@ -245,6 +250,34 @@ def delete_skill(key: str, *, path: str | os.PathLike | None = None) -> int:
     custom skill). Returns rows removed."""
     with _session(path) as conn:
         return conn.execute("DELETE FROM ai_skills WHERE key=?", (key,)).rowcount
+
+
+# -------------------------------------------------- custom materials -------
+def get_custom_materials(*, path: str | os.PathLike | None = None) -> dict:
+    """Return {key: material-dict} of operator-added materials."""
+    out: dict[str, dict] = {}
+    with _session(path) as conn:
+        for r in conn.execute("SELECT key, data FROM custom_materials"):
+            try:
+                out[r["key"]] = json.loads(r["data"])
+            except (ValueError, TypeError):
+                continue
+    return out
+
+
+def save_custom_material(key: str, data: dict, *, path: str | os.PathLike | None = None) -> None:
+    with _session(path) as conn:
+        conn.execute(
+            "INSERT INTO custom_materials (key, data, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+            (key, json.dumps(data, ensure_ascii=False), _now()))
+
+
+def delete_custom_material(key: str, *, path: str | os.PathLike | None = None) -> int:
+    """Delete a custom material; its price overrides are cleared too. Returns rows."""
+    with _session(path) as conn:
+        conn.execute("DELETE FROM price_overrides WHERE kind='material' AND key=?", (key,))
+        return conn.execute("DELETE FROM custom_materials WHERE key=?", (key,)).rowcount
 
 
 def clear_overrides(*, path: str | os.PathLike | None = None) -> None:

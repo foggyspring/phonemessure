@@ -1,7 +1,7 @@
 """CAPP + costing engines and the shop reference data they read."""
 from .capp import ProcessPlan, Stock, TimeBreakdown, plan
 from .costing import CostBreakdown, Quote, price
-from .shopdata import Finish, Machine, Material, ShopData, apply_overrides, load
+from .shopdata import Finish, Machine, Material, ShopData, apply_custom_materials, apply_overrides, load
 
 __all__ = [
     "ProcessPlan",
@@ -17,4 +17,5 @@ __all__ = [
     "ShopData",
     "load",
     "apply_overrides",
+    "apply_custom_materials",
 ]
