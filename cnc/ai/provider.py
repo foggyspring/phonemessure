@@ -166,9 +166,27 @@ def _help_text() -> str:
 
 
 # ----------------------------------------------------------- selection ----
+_provider_cache: dict[tuple, LLMProvider] = {}
+
+
 def get_provider() -> LLMProvider:
-    """Select the provider by env; fall back to mock when none is configured."""
+    """Select the provider by env; fall back to mock when none is configured.
+
+    Memoized per env config — a single chat request resolves the provider 2+
+    times (cost guard + agent) and the real providers build an SDK client each
+    construction. Tests monkeypatch env, so key on the config, not a singleton.
+    """
     kind = os.environ.get("AI_PROVIDER", "mock").lower()
+    cache_key = (kind, os.environ.get("AI_API_KEY", ""), os.environ.get("AI_BASE_URL", ""))
+    hit = _provider_cache.get(cache_key)
+    if hit is not None:
+        return hit
+    p = _build_provider(kind)
+    _provider_cache[cache_key] = p
+    return p
+
+
+def _build_provider(kind: str) -> LLMProvider:
     import logging
     _log = logging.getLogger("cnc.ai")
     if kind in ("anthropic", "claude"):

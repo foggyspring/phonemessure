@@ -141,7 +141,7 @@ _OVERRIDE_FIELDS = {
 # Business/process scalars an operator may maintain at runtime (利润率/税率/去毛刺
 # /物流/最小起订 等).
 _BUSINESS_OVERRIDABLE = {
-    "margin", "tax_rate", "tight_tolerance_margin_bonus", "rush_factor",
+    "margin", "tax_rate", "tight_tolerance_margin_bonus",
     "deburr_base_cny", "deburr_per_dm2_cny", "packaging_cny",
     "shipping_cny_per_kg", "min_order_cny", "quote_valid_days",
     "daily_capacity_hours", "tool_wear_cny_per_hour",

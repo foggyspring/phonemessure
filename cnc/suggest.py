@@ -25,7 +25,7 @@ def suggest_materials(feat, material, finish, shop, qty, *, max_suggestions=3,
     if base <= 0:
         return []
 
-    finish_key = getattr(finish, "key", "none")
+    finish_key = finish.key
     out: list[dict] = []
     for key, mat in shop.materials.items():
         if key == material.key or mat.category != material.category:
@@ -61,7 +61,7 @@ def _strength_note(base_mat, sub_mat) -> dict:
 def compare_all_materials(feat, finish, shop, qty) -> list[dict]:
     """Full what-if table: every material that supports the finish, priced
     (analytic) with its key properties, cheapest first."""
-    finish_key = getattr(finish, "key", "none")
+    finish_key = finish.key
     rows: list[dict] = []
     for key, mat in shop.materials.items():
         if finish_key != "none" and finish_key not in mat.finish_ok:

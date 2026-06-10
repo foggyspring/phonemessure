@@ -34,7 +34,6 @@ _CUTTING_PATH = Path(__file__).resolve().parent.parent / "data" / "cutting.json"
 
 # Hard caps so a pathological/huge mesh can't hang the request.
 _MAX_LEVELS = 600
-_MAX_FACES = 400_000
 # Above this, sectioning a high-poly (usually organic-scan) mesh at every Z level
 # is too slow for an inline request — real validation hit 8–18 s on 50–170 k-face
 # scans. Such parts aren't prismatically machinable anyway, so fall back to the

@@ -15,10 +15,18 @@ customer sees the curve, not just one number.
 """
 from __future__ import annotations
 
+import math
+from datetime import date, timedelta
+
 from dataclasses import asdict, dataclass, field
 
 from .capp import ProcessPlan
 from .shopdata import Finish, Material, ShopData
+
+
+def _delivery_date(days: int) -> str:
+    """Calendar date *days* from today (shared by quote totals and lead options)."""
+    return (date.today() + timedelta(days=int(days))).isoformat()
 
 
 @dataclass
@@ -69,8 +77,6 @@ class Quote:
     def to_dict(self) -> dict:
         # Tax is charged on the requested line total; the grand total is what
         # the customer pays. Quote carries a validity window since prices move.
-        from datetime import date, timedelta
-
         # Round the line net first so line_net_cny + min_order_topup_cny exactly
         # equals net_total_cny (no sub-cent float dust at the floor boundary).
         line_net = round(round(self.requested.unit_price_cny, 2) * self.requested.quantity, 2)
@@ -79,9 +85,8 @@ class Quote:
         net = max(line_net, round(self.min_order_cny, 2))
         min_order_topup = round(net - line_net, 2)
         tax = net * self.tax_rate
-        valid_until = (date.today() + timedelta(days=self.valid_days)).isoformat() \
-            if self.valid_days else None
-        delivery_date = (date.today() + timedelta(days=self.lead_days)).isoformat()
+        valid_until = _delivery_date(self.valid_days) if self.valid_days else None
+        delivery_date = _delivery_date(self.lead_days)
         return {
             "requested": self.requested.to_dict(),
             "tiers": [t.to_dict() for t in self.tiers],
@@ -252,16 +257,15 @@ def price(
     lead_factor = float(sel["factor"])
     # Procurement: non-stocked materials (titanium / 316 …) wait for stock before
     # machining can even start, so add their lead to every delivery option.
-    procure_days = int(getattr(material, "stock_lead_days", 0) or 0)
+    procure_days = int(material.stock_lead_days or 0)
     # Capacity: a large order can't physically ship within the tier window —
     # 1000 parts × 40min ≈ 667 machine-hours. Floor the lead at the machining
     # days implied by total cycle time ÷ daily capacity (maintainable).
-    import math as _math
     capacity_h = float(biz.get("daily_capacity_hours", 16) or 16)
-    machining_days = _math.ceil(plan.times.per_part_min * rq / 60.0 / capacity_h) if capacity_h > 0 else 0
+    machining_days = math.ceil(plan.times.per_part_min * rq / 60.0 / capacity_h) if capacity_h > 0 else 0
 
     # Outsourced finishing (anodize / powder coat …) adds turnaround after cutting.
-    finish_days = int(getattr(finish, "lead_days", 0) or 0)
+    finish_days = int(finish.lead_days or 0)
 
     def _lead_for(tier_days: int) -> int:
         return max(int(tier_days), machining_days) + procure_days + finish_days
@@ -293,7 +297,6 @@ def price(
     one_time_total = order_one_time(rq)
 
     # Each delivery option's price at the requested quantity (for side-by-side UI).
-    from datetime import date as _date, timedelta as _td
     lead_time_options = []
     for t in tier_cfg:
         # Total must be rounded-unit × qty (same basis as CostBreakdown.to_dict),
@@ -302,7 +305,7 @@ def price(
         days = _lead_for(int(t["days"]))
         lead_time_options.append({
             "key": t["key"], "label": t["label"], "days": days,
-            "delivery_date": (_date.today() + _td(days=days)).isoformat(),
+            "delivery_date": _delivery_date(days),
             "factor": float(t["factor"]), "unit_price_cny": ur,
             "total_cny": round(ur * rq, 2), "selected": t["key"] == sel["key"],
         })

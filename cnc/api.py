@@ -43,6 +43,7 @@ from .quote import build_quote_pdf
 from .service import QuoteError, QuoteRequest, build_quote
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+_VERSION = "0.3.0"   # keep in sync with pyproject.toml
 MAX_UPLOAD_BYTES = 60 * 1024 * 1024  # 60 MB — reject monster assemblies early
 
 
@@ -250,7 +251,7 @@ def _read_capped(file: UploadFile) -> bytes:
 
 
 def build_app() -> FastAPI:
-    app = FastAPI(title="CNC Quote Engine", version="1.0.0")
+    app = FastAPI(title="CNC Quote Engine", version=_VERSION)
 
     @app.get("/api/health")
     def health() -> dict:
@@ -271,7 +272,7 @@ def build_app() -> FastAPI:
         svc = get_price_service()
         return {
             "ok": db_ok,
-            "version": "0.3.0",
+            "version": _VERSION,
             "brep_kernel": kernel,
             "db": db_ok,
             "ai_provider": prov.name,

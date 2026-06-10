@@ -98,7 +98,10 @@ try:
     ok = build_and_post()
 except Exception as e:
     sys.stderr.write("FC-CAM-ERROR: %s\n" % e)
-_log.debug("FC-CAM-DONE %s" % json.dumps({"ok": bool(ok)}))
+# stdout sentinel the parent process greps for — this runs inside freecadcmd,
+# where the host's _log does not exist (a NameError here ate the sentinel and
+# made the backend permanently fail even with FreeCAD installed).
+print("FC-CAM-DONE %s" % json.dumps({"ok": bool(ok)}))
 '''
 
 

@@ -999,7 +999,7 @@ function logout() {
 // ───────────────────────── admin price modal ─────────────────────────
 const BIZ_LABELS = {
   margin: "利润率", tax_rate: "增值税率", tight_tolerance_margin_bonus: "精密公差溢价",
-  rush_factor: "加急系数", deburr_base_cny: "去毛刺起步 ¥", deburr_per_dm2_cny: "去毛刺 ¥/dm²",
+  deburr_base_cny: "去毛刺起步 ¥", deburr_per_dm2_cny: "去毛刺 ¥/dm²",
   packaging_cny: "包装费 ¥", shipping_cny_per_kg: "运费 ¥/kg", min_order_cny: "最小起订 ¥",
   quote_valid_days: "报价有效期(天)", daily_capacity_hours: "日产能(机时/天)",
   tool_wear_cny_per_hour: "刀具消耗 ¥/h", crate_threshold_kg: "木箱阈值(kg)", crate_cny: "木箱费 ¥",
