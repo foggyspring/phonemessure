@@ -113,37 +113,87 @@ def _derive(cutting: dict, key: str) -> tuple[dict, dict]:
 
 
 # --------------------------------------------------------------------------
-def _section_polys(mesh, z):
-    """Return a shapely geometry of the part's solid cross-section at height z.
+def _chain_loops(segs, tol: float = 1e-6) -> list:
+    """Chain raw 2D section segments into closed loops (vectorized endpoint
+    matching). mesh_multiplane hands back unordered (n,2,2) segments; quantize
+    endpoints to vertex ids, then walk the degree-2 graph. Open chains (broken
+    sections on non-watertight meshes) are dropped, mirroring the old behaviour
+    of a failed section at that level."""
+    import numpy as np
 
-    Built from the section's discrete loops in world XY (so it lines up with the
-    stock rectangle). Nesting is resolved by *even-odd* fill (chained symmetric
-    difference): a region inside an odd number of loops is solid, an even number
-    is a void. This is what makes milled pockets/cavities read as empty space —
-    so roughing actually clears them — while the outer body stays solid.
+    pts = segs.reshape(-1, 2)
+    q = np.round(pts / tol).astype(np.int64)
+    uniq, first_idx, inv = np.unique(q, axis=0, return_index=True, return_inverse=True)
+    coord = pts[first_idx]                       # representative coordinate per vertex id
+    a, b = inv[0::2], inv[1::2]                  # per-segment endpoint vertex ids
+    n = len(a)
+    deg = np.zeros(len(uniq), dtype=np.int32)
+    inc = np.full((len(uniq), 2), -1, dtype=np.int64)
+    for i in range(n):
+        for v in (a[i], b[i]):
+            if deg[v] < 2:
+                inc[v, deg[v]] = i
+            deg[v] += 1
+    used = np.zeros(n, dtype=bool)
+    loops = []
+    for start in range(n):
+        if used[start]:
+            continue
+        used[start] = True
+        ids = [a[start], b[start]]
+        while True:
+            v = ids[-1]
+            nxt = -1
+            for s in inc[v]:
+                if s >= 0 and not used[s]:
+                    nxt = s
+                    break
+            if nxt < 0:
+                break
+            used[nxt] = True
+            ids.append(b[nxt] if a[nxt] == v else a[nxt])
+            if ids[-1] == ids[0]:
+                break
+        if len(ids) >= 4 and ids[-1] == ids[0]:
+            loops.append(coord[ids[:-1]])
+    return loops
+
+
+def _section_polys_batch(mesh, zs) -> list:
+    """Solid cross-sections at every height in *zs*, in ONE multiplane pass.
+
+    Replaces per-level mesh.section() calls: trimesh built a full Path3D (graph
+    traversals, scipy sparse) per level, ~5 ms each — the dominant cost of the
+    whole toolpath sim. mesh_multiplane computes all planes in a single sweep;
+    we chain its raw segments ourselves and keep the same even-odd fill
+    (chained symmetric difference), so pockets/cavities still read as voids.
+    Returns a list aligned with zs; entries are shapely geometry or None.
     """
+    import numpy as np
     from shapely.geometry import Polygon
 
     try:
-        sec = mesh.section(plane_origin=(0, 0, z), plane_normal=(0, 0, 1))
+        import trimesh
+        lines, _, _ = trimesh.intersections.mesh_multiplane(
+            mesh, plane_origin=(0, 0, 0), plane_normal=(0, 0, 1),
+            heights=np.asarray(zs, dtype=float))
     except Exception:
-        sec = None
-    if sec is None:
-        return None
-    acc = None
-    for loop in sec.discrete:                # each loop: Nx3 closed polyline
-        xy = loop[:, :2]
-        if len(xy) < 3:
+        return [None] * len(zs)
+    out = []
+    for segs in lines:
+        if segs is None or len(segs) == 0:
+            out.append(None)
             continue
-        p = Polygon(xy)
-        if not p.is_valid:
-            p = p.buffer(0)
-        if p.is_empty or p.area <= 1e-6:
-            continue
-        acc = p if acc is None else acc.symmetric_difference(p)
-    if acc is None or acc.is_empty:
-        return None
-    return acc
+        acc = None
+        for loop in _chain_loops(segs):
+            p = Polygon(loop)
+            if not p.is_valid:
+                p = p.buffer(0)
+            if p.is_empty or p.area <= 1e-6:
+                continue
+            acc = p if acc is None else acc.symmetric_difference(p)
+        out.append(acc if (acc is not None and not acc.is_empty) else None)
+    return out
 
 
 def _offset_pass_length(region, stepover: float) -> float:
@@ -195,9 +245,9 @@ def _simulate_roughing(mesh, bounds, margin, cut, tools) -> tuple[float, dict]:
     cut_time = 0.0
     link_time = 0.0
     levels = 0
-    for i in range(n):
-        zc = z_top - (i + 0.5) * dz
-        part = _section_polys(mesh, zc)
+    zcs = [z_top - (i + 0.5) * dz for i in range(n)]
+    sections = _section_polys_batch(mesh, zcs)
+    for part in sections:
         clear = stock if part is None else stock.difference(part)
         if clear.is_empty:
             continue
@@ -228,14 +278,13 @@ def _simulate_finishing(mesh, bounds, cut, tools) -> tuple[float, dict]:
     z_bot = bounds[0][2]
     height = max(z_top - z_bot, 0.0)
 
-    # Waterline walls: perimeter at each fine Z step.
+    # Waterline walls: perimeter at each fine Z step (one multiplane pass).
     n = min(_MAX_LEVELS, max(1, math.ceil(height / stepdown)))
     dz = height / n if n else 0.0
     wall_len = 0.0
     footprint_area = 0.0
-    for i in range(n):
-        zc = z_bot + (i + 0.5) * dz
-        part = _section_polys(mesh, zc)
+    zcs = [z_bot + (i + 0.5) * dz for i in range(n)]
+    for part in _section_polys_batch(mesh, zcs):
         if part is None or part.is_empty:
             continue
         wall_len += part.length

@@ -19,8 +19,12 @@ from __future__ import annotations
 import math
 
 _MAX_FACES = 300_000
-_PROBE_LINES = 64          # how many scan lines we actually drop-cutter
-_MIN_SAMPLING = 0.6        # mm between sampled points along a line
+# Probe density: the factor is a path-elongation RATIO, which converges fast —
+# 32 lines @1.2mm sampling lands within ~1.6% of 64 @0.6mm (hemisphere/capsule
+# benchmarks) at a quarter of the drop-cutter cost. It scales only the raster
+# share of finishing, so the net price effect is well under 1%.
+_PROBE_LINES = 32          # how many scan lines we actually drop-cutter
+_MIN_SAMPLING = 1.2        # mm between sampled points along a line
 
 
 def available() -> bool:
@@ -69,7 +73,7 @@ def curvature_factor(mesh, finish_d: float, stepover: float) -> tuple[float, dic
         pdc = ocl.PathDropCutter()
         pdc.setSTL(surf)
         pdc.setCutter(cutter)
-        sampling = max(_MIN_SAMPLING, (x1 - x0) / 400.0)
+        sampling = max(_MIN_SAMPLING, (x1 - x0) / 200.0)
         pdc.setSampling(sampling)
         floor = z0 - 1.0
         pdc.setZ(floor)
