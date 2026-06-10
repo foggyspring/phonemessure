@@ -25,6 +25,14 @@
 接口：`PUT /api/admin/price`（白名单校验 + 审计 **before→after**）、`DELETE /api/admin/price`
 （单条回退或 `scope=all`）、`GET /api/admin/config`（当前全量）、`GET /api/admin/audit`。
 
+
+## 人工新增条目(材料/工艺/机床)
+
+除改字段外,三个目录均支持**面板新增整条**:`PUT/DELETE /api/admin/materials`、
+`/api/admin/finishes`(必须带 apply_to 适用材料)、`/api/admin/machines`。
+自定义条目存于独立人工层(custom_* 表),在市场价/改价层之前合并,
+删除连带清其改价记录;内置条目不可覆盖/删除;全程审计。
+
 完整成本/交期/DFM 模型见 [cost-model.md](cost-model.md)。
 
 > 注：UI 全面禁用 emoji，文案中英双语；改动需管理员登录。
