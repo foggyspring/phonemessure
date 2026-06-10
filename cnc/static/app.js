@@ -1244,6 +1244,8 @@ async function openAdmin() {
   sel.onchange = renderAdminCutting; renderAdminCutting();
   renderSkills();
   renderCustomMaterials();
+  renderCustomFinishes();
+  renderCustomMachines();
   $("admin-modal").classList.remove("hidden");
 }
 
@@ -1478,6 +1480,196 @@ function openMaterialAddForm() {
   wrap.appendChild(form);
 }
 
+// ───────────────────────── custom finishes ─────────────────────────
+let _finMeta = null;  // cached {materials, builtin_keys, ...} from GET /api/admin/finishes
+
+// PUT a custom finish; returns true on success (toast on failure).
+async function finishPut(payload) {
+  try {
+    const { res, detail, authFailed } = await apiFetch("/api/admin/finishes", {
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    }, { authed: true });
+    if (authFailed) { closeAdmin(); toast("登录已过期，请重新登录", "err"); return false; }
+    if (!res.ok) { toast("保存失败：" + detail, "err"); return false; }
+    return true;
+  } catch (e) { toast("保存失败：" + e.message, "err"); return false; }
+}
+
+async function renderCustomFinishes() {
+  const wrap = $("admin-custom-finishes");
+  if (!wrap) return;
+  let data;
+  try {
+    const { res, authFailed } = await apiFetch("/api/admin/finishes", { headers: authHeaders() }, { authed: true });
+    if (authFailed) return;
+    data = await res.json();
+  } catch { toast("加载工艺失败", "err"); return; }
+  _finMeta = data;
+  wrap.innerHTML = "";
+  const custom = data.custom || {};
+  if (!Object.keys(custom).length) {
+    const p = document.createElement("p");
+    p.className = "muted tiny"; p.textContent = "暂无自定义工艺。";
+    wrap.appendChild(p);
+  }
+  for (const [key, f] of Object.entries(custom)) {
+    const row = document.createElement("div");
+    row.className = "skill-row mat-row";
+    row.innerHTML =
+      `<div class="skill-head">` +
+        `<span class="skill-name">${esc(f.label || key)}</span>` +
+        `<span class="skill-origin custom">${esc(key)}</span>` +
+        `<button class="ghost-btn small mat-del" data-del>删除</button>` +
+      `</div>` +
+      `<div class="mat-meta muted tiny">每dm² ¥${esc(String(f.per_dm2_cny ?? ""))} · ` +
+        `外协 ${esc(String(f.lead_days ?? ""))} 天 · 适用材料 ${(f.apply_to || []).length} 种</div>`;
+    row.querySelector("[data-del]").addEventListener("click", async () => {
+      if (!confirm(`确定删除工艺「${f.label || key}」？`)) return;
+      try {
+        const { res, detail, authFailed } = await apiFetch("/api/admin/finishes/" + encodeURIComponent(key),
+          { method: "DELETE", headers: authHeaders() }, { authed: true });
+        if (authFailed) { closeAdmin(); toast("登录已过期，请重新登录", "err"); return; }
+        if (!res.ok) { toast("删除失败：" + detail, "err"); return; }
+        toast("删除成功", "ok"); renderCustomFinishes(); loadShop();
+      } catch (e) { toast("删除失败：" + e.message, "err"); }
+    });
+    wrap.appendChild(row);
+  }
+}
+
+// Inline "new custom finish" form, appended to the finishes pane.
+function openFinishAddForm() {
+  const wrap = $("admin-custom-finishes");
+  if (!wrap || wrap.querySelector(".fin-add-form")) return;
+  const mats = (_finMeta && _finMeta.materials) || [];
+  const matChecks = mats.map((m) =>
+    `<label class="mat-fin"><input type="checkbox" data-mat value="${esc(m)}">${esc(m)}</label>`).join("");
+  const form = document.createElement("div");
+  form.className = "skill-row fin-add-form";
+  form.innerHTML =
+    `<div class="skill-head"><span class="skill-name">新增工艺</span></div>` +
+    `<label class="skill-field">代号 key<input type="text" data-f="key" placeholder="CUSTOM_XXX"></label>` +
+    `<label class="skill-field">名称 label<input type="text" data-f="label"></label>` +
+    `<label class="skill-field">起步 setup_cny<input type="number" step="1" data-f="setup_cny"></label>` +
+    `<label class="skill-field">每dm² per_dm2_cny<input type="number" step="0.1" data-f="per_dm2_cny"></label>` +
+    `<label class="skill-field">保底 min_cny<input type="number" step="1" data-f="min_cny"></label>` +
+    `<label class="skill-field">外协天数 lead_days<input type="number" step="1" data-f="lead_days"></label>` +
+    `<div class="skill-field">适用材料 apply_to<div class="mat-fins">${matChecks || '<span class="muted tiny">无可选</span>'}</div></div>` +
+    `<div class="skill-head"><button class="primary small" data-save>保存</button><button class="ghost-btn small" data-cancel>取消</button></div>`;
+  form.querySelector("[data-cancel]").addEventListener("click", () => form.remove());
+  form.querySelector("[data-save]").addEventListener("click", async () => {
+    const val = (f) => form.querySelector(`[data-f="${f}"]`).value.trim();
+    const num = (f) => parseFloat(val(f));
+    const payload = {
+      key: val("key"), label: val("label"),
+      setup_cny: num("setup_cny"), per_dm2_cny: num("per_dm2_cny"),
+      min_cny: num("min_cny"), lead_days: num("lead_days"),
+      apply_to: [...form.querySelectorAll("[data-mat]:checked")].map((c) => c.value),
+    };
+    if (!payload.key || !payload.label ||
+        [payload.setup_cny, payload.per_dm2_cny, payload.min_cny, payload.lead_days].some((n) => isNaN(n))) {
+      toast("请填写 代号/名称/起步/每dm²/保底/外协天数", "err"); return;
+    }
+    if (!payload.apply_to.length) { toast("请至少勾选一种适用材料", "err"); return; }
+    if (await finishPut(payload)) {
+      toast("已新增工艺", "ok"); renderCustomFinishes(); loadShop();
+    }
+  });
+  wrap.appendChild(form);
+}
+
+// ───────────────────────── custom machines ─────────────────────────
+
+// PUT a custom machine; returns true on success (toast on failure).
+async function machinePut(payload) {
+  try {
+    const { res, detail, authFailed } = await apiFetch("/api/admin/machines", {
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    }, { authed: true });
+    if (authFailed) { closeAdmin(); toast("登录已过期，请重新登录", "err"); return false; }
+    if (!res.ok) { toast("保存失败：" + detail, "err"); return false; }
+    return true;
+  } catch (e) { toast("保存失败：" + e.message, "err"); return false; }
+}
+
+async function renderCustomMachines() {
+  const wrap = $("admin-custom-machines");
+  if (!wrap) return;
+  let data;
+  try {
+    const { res, authFailed } = await apiFetch("/api/admin/machines", { headers: authHeaders() }, { authed: true });
+    if (authFailed) return;
+    data = await res.json();
+  } catch { toast("加载机床失败", "err"); return; }
+  wrap.innerHTML = "";
+  const custom = data.custom || {};
+  if (!Object.keys(custom).length) {
+    const p = document.createElement("p");
+    p.className = "muted tiny"; p.textContent = "暂无自定义机床。";
+    wrap.appendChild(p);
+  }
+  for (const [key, m] of Object.entries(custom)) {
+    const row = document.createElement("div");
+    row.className = "skill-row mat-row";
+    row.innerHTML =
+      `<div class="skill-head">` +
+        `<span class="skill-name">${esc(m.label || key)}</span>` +
+        `<span class="skill-origin custom">${esc(key)}</span>` +
+        `<button class="ghost-btn small mat-del" data-del>删除</button>` +
+      `</div>` +
+      `<div class="mat-meta muted tiny">时租 ¥${esc(String(m.rate_cny_per_hour ?? ""))}/h · ` +
+        `基础MRR ${esc(String(m.base_mrr_cm3_min ?? ""))} cm³/min · ${esc(String(m.max_axes ?? ""))} 轴</div>`;
+    row.querySelector("[data-del]").addEventListener("click", async () => {
+      if (!confirm(`确定删除机床「${m.label || key}」？`)) return;
+      try {
+        const { res, detail, authFailed } = await apiFetch("/api/admin/machines/" + encodeURIComponent(key),
+          { method: "DELETE", headers: authHeaders() }, { authed: true });
+        if (authFailed) { closeAdmin(); toast("登录已过期，请重新登录", "err"); return; }
+        if (!res.ok) { toast("删除失败：" + detail, "err"); return; }
+        toast("删除成功", "ok"); renderCustomMachines(); loadShop();
+      } catch (e) { toast("删除失败：" + e.message, "err"); }
+    });
+    wrap.appendChild(row);
+  }
+}
+
+// Inline "new custom machine" form, appended to the machines pane.
+function openMachineAddForm() {
+  const wrap = $("admin-custom-machines");
+  if (!wrap || wrap.querySelector(".mach-add-form")) return;
+  const form = document.createElement("div");
+  form.className = "skill-row mach-add-form";
+  form.innerHTML =
+    `<div class="skill-head"><span class="skill-name">新增机床</span></div>` +
+    `<label class="skill-field">代号 key<input type="text" data-f="key" placeholder="CUSTOM_XXX"></label>` +
+    `<label class="skill-field">名称 label<input type="text" data-f="label"></label>` +
+    `<label class="skill-field">时租 rate_cny_per_hour<input type="number" step="1" data-f="rate_cny_per_hour"></label>` +
+    `<label class="skill-field">基础MRR base_mrr_cm3_min<input type="number" step="0.1" data-f="base_mrr_cm3_min"></label>` +
+    `<label class="skill-field">轴数 max_axes<select data-f="max_axes"><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></label>` +
+    `<div class="skill-head"><button class="primary small" data-save>保存</button><button class="ghost-btn small" data-cancel>取消</button></div>`;
+  form.querySelector("[data-cancel]").addEventListener("click", () => form.remove());
+  form.querySelector("[data-save]").addEventListener("click", async () => {
+    const val = (f) => form.querySelector(`[data-f="${f}"]`).value.trim();
+    const num = (f) => parseFloat(val(f));
+    const payload = {
+      key: val("key"), label: val("label"),
+      rate_cny_per_hour: num("rate_cny_per_hour"),
+      base_mrr_cm3_min: num("base_mrr_cm3_min"),
+      max_axes: parseInt(val("max_axes"), 10),
+    };
+    if (!payload.key || !payload.label ||
+        [payload.rate_cny_per_hour, payload.base_mrr_cm3_min].some((n) => isNaN(n))) {
+      toast("请填写 代号/名称/时租/基础MRR", "err"); return;
+    }
+    if (await machinePut(payload)) {
+      toast("已新增机床", "ok"); renderCustomMachines(); loadShop();
+    }
+  });
+  wrap.appendChild(form);
+}
+
 async function saveAdmin() {
   const inputs = [...$("admin-modal").querySelectorAll("input[data-kind]")];
   const changed = inputs.filter((i) => {
@@ -1640,9 +1832,13 @@ function main() {
     document.querySelectorAll(".admin-pane").forEach((p) => p.classList.toggle("on", p.dataset.pane === name));
     if (name === "skills") renderSkills();
     if (name === "materials") renderCustomMaterials();
+    if (name === "finishes") renderCustomFinishes();
+    if (name === "machines") renderCustomMachines();
   }));
   $("skill-add").addEventListener("click", openSkillAddForm);
   $("material-add").addEventListener("click", openMaterialAddForm);
+  $("finish-add").addEventListener("click", openFinishAddForm);
+  $("machine-add").addEventListener("click", openMachineAddForm);
   $("admin-save").addEventListener("click", saveAdmin);
   $("admin-modal").addEventListener("click", (e) => { if (e.target.id === "admin-modal") closeAdmin(); });
   $("logout-btn").addEventListener("click", logout);

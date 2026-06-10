@@ -413,8 +413,10 @@ table.hist .h-id { color: var(--muted2); font-family: ui-monospace, "SF Mono", m
 .skill-field input, .skill-field textarea, .skill-field select { margin-top: 4px; }
 .skill-field textarea { resize: vertical; min-height: 48px; }
 
-/* ---------- custom materials ---------- */
-#admin-custom-materials { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+/* ---------- custom materials / finishes / machines ---------- */
+#admin-custom-materials, #admin-custom-finishes, #admin-custom-machines {
+  display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;
+}
 .mat-meta { margin: 0; }
 .mat-del { margin-left: auto; }
 .mat-fins { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; }
