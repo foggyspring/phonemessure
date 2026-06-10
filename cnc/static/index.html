@@ -281,6 +281,7 @@
         <button class="admin-tab" data-tab="tiers">系数</button>
         <button class="admin-tab" data-tab="capp">工时</button>
         <button class="admin-tab" data-tab="cutting">切削</button>
+        <button class="admin-tab" data-tab="skills">技能库</button>
       </div>
       <section class="admin-pane on" data-pane="materials">
         <h3>材料单价 Material ¥/kg</h3>
@@ -310,6 +311,11 @@
         <h3>切削参数 Feeds/Speeds（按材料 Vc·fz）</h3>
         <label class="muted tiny">材料 <select id="admin-cut-mat"></select></label>
         <div id="admin-cutting" class="admin-grid"></div>
+      </section>
+      <section class="admin-pane" data-pane="skills">
+        <h3>技能库 Skills（触发词/回答/启用）</h3>
+        <div id="admin-skills"></div>
+        <button id="skill-add" class="ghost-btn small">新增自定义技能</button>
       </section>
       <div class="modal-foot">
         <button id="admin-save" class="primary small">保存并刷新报价</button>

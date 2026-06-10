@@ -182,6 +182,72 @@ def batch():
     print("wrote doc/img/ui-batch.png")
 
 
+
+
+# ───────────────────────────── 3. Skill library ────────────────────────────
+def skills_tab():
+    W, H = 760, 600
+    img, d = new(W, H)
+    mx, my, mw, mh = 30, 24, W - 60, H - 48
+    rr(d, (mx, my, mx + mw, my + mh), 12, fill=C["panel"], outline=C["border2"])
+    d.text((mx + 22, my + 18), "价格维护 Price maintenance", font=F(16), fill=C["text"])
+    d.text((mx + mw - 36, my + 16), "×", font=F(20), fill=C["muted"])
+    # tab bar with 技能库 active
+    tabs = ["材料", "机床", "表面处理", "商务", "系数", "工时", "切削", "技能库"]
+    tx, ty = mx + 22, my + 52
+    d.line((mx + 22, ty + 28, mx + mw - 22, ty + 28), fill=C["border"], width=1)
+    cur = tx
+    for t in tabs:
+        wseg = d.textlength(t, font=F(13)) + 22
+        if t == "技能库":
+            d.text((cur + 11, ty + 6), t, font=F(13), fill=C["accent"])
+            d.line((cur, ty + 28, cur + wseg, ty + 28), fill=C["accent"], width=2)
+        else:
+            d.text((cur + 11, ty + 6), t, font=F(13), fill=C["muted"])
+        cur += wseg + 4
+    # add button
+    rr(d, (mx + mw - 150, ty + 2, mx + mw - 22, ty + 26), 7, fill=C["panel2"], outline=C["border2"])
+    d.text((mx + mw - 138, ty + 6), "新增自定义技能", font=F(12), fill=C["text"])
+
+    rows = [
+        ("报价 Quote", "动作", C["accent"], "内置", "报价, 多少钱, 价格, quote, price", True, None),
+        ("DFM 风险", "动作", C["accent"], "内置", "dfm, 可加工, 工艺, 风险, 问题", True, None),
+        ("全面分析", "分析", C["accent2"], "内置", "分析, 评估, analyz, 看看, 检查", True, None),
+        ("公差怎么选", "知识", C["warn"], "内置", "公差怎么选, 选什么公差, 公差建议",
+         True, "标准 ±0.1 已满足绝大多数用途且最省钱；只对关键配合面标 ±0.05…"),
+        ("交期 FAQ", "知识", C["warn"], "自定义", "多久能做好, 交期多长",
+         True, "标准交期约 10 天，加急可压到 3-5 天(有溢价)。"),
+        ("改价 Set price", "动作", C["accent"], "内置", "改价, 设置价格, 调价（仅管理员）", False, None),
+    ]
+    y = ty + 44
+    for name, kind, kc, origin, triggers, enabled, resp in rows:
+        rh = 64 if resp else 44
+        rr(d, (mx + 22, y, mx + mw - 22, y + rh - 8), 8, fill=C["panel2"], outline=C["border"])
+        d.text((mx + 36, y + 9), name, font=F(13), fill=C["text"])
+        bx = mx + 36 + d.textlength(name, font=F(13)) + 10
+        rr(d, (bx, y + 9, bx + 34, y + 27), 9, fill=kc)
+        d.text((bx + 7, y + 11), kind, font=F(11), fill="#fff")
+        ox = bx + 42
+        ocol = C["muted2"] if origin == "内置" else C["accent2"]
+        d.text((ox, y + 11), origin, font=F(11), fill=ocol)
+        # enabled toggle + delete on the right
+        tog = "启用" if enabled else "停用"
+        tcol = C["accent2"] if enabled else C["muted2"]
+        d.text((mx + mw - 130, y + 11), "● " + tog, font=F(11), fill=tcol)
+        d.text((mx + mw - 64, y + 11), "恢复默认" if origin == "内置" else "删除",
+               font=F(11), fill=C["muted"])
+        d.text((mx + 36, y + 30), "触发词：" + triggers, font=F(11), fill=C["muted"])
+        if resp:
+            d.text((mx + 36, y + 46), "话术：" + resp, font=F(11), fill=C["muted"])
+        y += rh
+    d.text((mx + 22, my + mh - 26),
+           "内置技能可改触发词/话术/启停(动作绑定不可改)；自定义技能可自由增删。改动叠加在默认库上，可回退，全程审计。",
+           font=F(11), fill=C["muted2"])
+    img.save("doc/img/ui-skills.png")
+    print("wrote doc/img/ui-skills.png")
+
+
 if __name__ == "__main__":
     research()
     batch()
+    skills_tab()

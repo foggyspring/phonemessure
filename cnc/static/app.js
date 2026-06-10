@@ -1242,6 +1242,7 @@ async function openAdmin() {
   const sel = $("admin-cut-mat"); sel.innerHTML = "";
   for (const m of Object.keys(state.adminCutting)) { const o = document.createElement("option"); o.value = m; o.textContent = m; sel.appendChild(o); }
   sel.onchange = renderAdminCutting; renderAdminCutting();
+  renderSkills();
   $("admin-modal").classList.remove("hidden");
 }
 
@@ -1252,6 +1253,123 @@ function renderAdminCutting() {
     adminRow(cg, k, "cutting", mat, k, v, 0.01);
 }
 function closeAdmin() { $("admin-modal").classList.add("hidden"); }
+
+// ───────────────────────── skills library ─────────────────────────
+const SKILL_KIND_LABEL = { action: "动作", analyze: "分析", knowledge: "知识" };
+
+// Save one field (or several) on a skill, then re-render the list.
+async function skillPut(payload) {
+  try {
+    const { res, detail, authFailed } = await apiFetch("/api/admin/skills", {
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    }, { authed: true });
+    if (authFailed) { closeAdmin(); toast("登录已过期，请重新登录", "err"); return false; }
+    if (!res.ok) { toast("保存失败：" + detail, "err"); return false; }
+    return true;
+  } catch (e) { toast("保存失败：" + e.message, "err"); return false; }
+}
+
+// Split a triggers input on commas (ASCII + 、 + Chinese comma) into a clean array.
+const splitTriggers = (s) => String(s || "").split(/[,，、]/).map((t) => t.trim()).filter(Boolean);
+
+async function renderSkills() {
+  const wrap = $("admin-skills");
+  if (!wrap) return;
+  let data;
+  try {
+    const { res, authFailed } = await apiFetch("/api/admin/skills", { headers: authHeaders() }, { authed: true });
+    if (authFailed) return;
+    data = await res.json();
+  } catch { toast("加载技能库失败", "err"); return; }
+  wrap.innerHTML = "";
+  for (const sk of data.skills || []) {
+    const row = document.createElement("div");
+    row.className = "skill-row";
+    const kindCls = sk.kind || "knowledge";
+    const kindLbl = SKILL_KIND_LABEL[kindCls] || kindCls;
+    const originLbl = sk.builtin ? "内置" : "自定义";
+    const originCls = sk.builtin ? "builtin" : "custom";
+    row.innerHTML =
+      `<div class="skill-head">` +
+        `<span class="skill-name">${esc(sk.name || sk.key)}</span>` +
+        `<span class="skill-badge ${esc(kindCls)}">${esc(kindLbl)}</span>` +
+        `<span class="skill-origin ${originCls}">${originLbl}</span>` +
+        `<label class="skill-en"><input type="checkbox" data-en ${sk.enabled ? "checked" : ""}>启用</label>` +
+        `<button class="ghost-btn small skill-del" data-del>${sk.builtin ? "恢复默认" : "删除"}</button>` +
+      `</div>` +
+      `<label class="skill-field">触发词<input type="text" data-trig value="${esc((sk.triggers || []).join("，"))}"></label>` +
+      (kindCls === "knowledge"
+        ? `<label class="skill-field">回答<textarea data-resp rows="3">${esc(sk.response || "")}</textarea></label>`
+        : "");
+    // toggle enabled
+    row.querySelector("[data-en]").addEventListener("change", async (e) => {
+      if (await skillPut({ key: sk.key, enabled: e.target.checked })) toast("已更新", "ok");
+      else renderSkills();
+    });
+    // edit triggers (commit on blur)
+    row.querySelector("[data-trig]").addEventListener("change", async (e) => {
+      if (await skillPut({ key: sk.key, triggers: splitTriggers(e.target.value) })) toast("已更新触发词", "ok");
+    });
+    // edit response (knowledge only)
+    const resp = row.querySelector("[data-resp]");
+    if (resp) resp.addEventListener("change", async (e) => {
+      if (await skillPut({ key: sk.key, response: e.target.value })) toast("已更新回答", "ok");
+    });
+    // delete / revert
+    row.querySelector("[data-del]").addEventListener("click", async () => {
+      const verb = sk.builtin ? "恢复默认" : "删除";
+      if (!confirm(`确定${verb}「${sk.name || sk.key}」？`)) return;
+      try {
+        const { res, detail, authFailed } = await apiFetch("/api/admin/skills/" + encodeURIComponent(sk.key),
+          { method: "DELETE", headers: authHeaders() }, { authed: true });
+        if (authFailed) { closeAdmin(); toast("登录已过期，请重新登录", "err"); return; }
+        if (!res.ok) { toast("操作失败：" + detail, "err"); return; }
+        toast(verb + "成功", "ok"); renderSkills();
+      } catch (e) { toast("操作失败：" + e.message, "err"); }
+    });
+    wrap.appendChild(row);
+  }
+}
+
+// Inline "new custom skill" form, appended to the skills pane.
+function openSkillAddForm() {
+  const wrap = $("admin-skills");
+  if (!wrap || wrap.querySelector(".skill-add-form")) return;
+  const form = document.createElement("div");
+  form.className = "skill-row skill-add-form";
+  form.innerHTML =
+    `<div class="skill-head"><span class="skill-name">新增自定义技能</span></div>` +
+    `<label class="skill-field">标识 key<input type="text" data-f="key" placeholder="custom_xxx"></label>` +
+    `<label class="skill-field">名称<input type="text" data-f="name"></label>` +
+    `<label class="skill-field">类型<select data-f="kind"><option value="knowledge">知识</option><option value="action">动作</option></select></label>` +
+    `<label class="skill-field">触发词<input type="text" data-f="triggers" placeholder="用逗号分隔"></label>` +
+    `<label class="skill-field skill-resp">回答<textarea data-f="response" rows="3"></textarea></label>` +
+    `<label class="skill-field skill-act" style="display:none">动作 action<input type="text" data-f="action" placeholder="tool name"></label>` +
+    `<div class="skill-head"><button class="primary small" data-save>保存</button><button class="ghost-btn small" data-cancel>取消</button></div>`;
+  const kindSel = form.querySelector('[data-f="kind"]');
+  kindSel.addEventListener("change", () => {
+    const isAct = kindSel.value === "action";
+    form.querySelector(".skill-resp").style.display = isAct ? "none" : "";
+    form.querySelector(".skill-act").style.display = isAct ? "" : "none";
+  });
+  form.querySelector("[data-cancel]").addEventListener("click", () => form.remove());
+  form.querySelector("[data-save]").addEventListener("click", async () => {
+    const val = (f) => form.querySelector(`[data-f="${f}"]`).value.trim();
+    const kind = val("kind");
+    const payload = { key: val("key"), name: val("name"), kind, triggers: splitTriggers(val("triggers")) };
+    if (!payload.key || !payload.name || !payload.triggers.length) { toast("请填写 标识/名称/触发词", "err"); return; }
+    if (kind === "knowledge") {
+      if (!val("response")) { toast("知识类需要填写回答", "err"); return; }
+      payload.response = val("response");
+    } else {
+      if (!val("action")) { toast("动作类需要填写 action", "err"); return; }
+      payload.action = val("action");
+    }
+    if (await skillPut(payload)) { toast("已新增技能", "ok"); renderSkills(); }
+  });
+  wrap.appendChild(form);
+}
 
 async function saveAdmin() {
   const inputs = [...$("admin-modal").querySelectorAll("input[data-kind]")];
@@ -1413,7 +1531,9 @@ function main() {
     const name = t.dataset.tab;
     document.querySelectorAll(".admin-tab").forEach((x) => x.classList.toggle("on", x === t));
     document.querySelectorAll(".admin-pane").forEach((p) => p.classList.toggle("on", p.dataset.pane === name));
+    if (name === "skills") renderSkills();
   }));
+  $("skill-add").addEventListener("click", openSkillAddForm);
   $("admin-save").addEventListener("click", saveAdmin);
   $("admin-modal").addEventListener("click", (e) => { if (e.target.id === "admin-modal") closeAdmin(); });
   $("logout-btn").addEventListener("click", logout);
