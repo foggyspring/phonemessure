@@ -14,7 +14,13 @@
     "rapid_mm_min": 24000.0,
     "retract_mm": 2.0,
     "plunge_feed_frac": 0.35,
-    "hole_approach_s": 4.0
+    "hole_approach_s": 4.0,
+    "peck_trigger_ratio": 3.0,
+    "peck_depth_ratio": 1.0,
+    "deep_feed_derate": 0.75,
+    "peck_overhead_s": 0.4,
+    "point_allowance_ratio": 0.3,
+    "tap_pitch_fallback_ratio": 0.15
   },
   "materials": {
     "AL6061": {

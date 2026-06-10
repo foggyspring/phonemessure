@@ -52,6 +52,13 @@ _CUTTING_OVERRIDABLE = {
     "vc_rough", "fz_rough", "vc_finish", "fz_finish", "rough_stepdown_mm",
     "finish_stepdown_mm", "vc_drill", "fz_drill", "vc_tap",
 }
+# Global cycle parameters (tools section) — drill/peck/tap cycle knobs that the
+# panel maintains under the pseudo-key "tools" (kind="cutting", key="tools").
+_CUTTING_GLOBAL_OVERRIDABLE = {
+    "rapid_mm_min", "retract_mm", "plunge_feed_frac", "hole_approach_s",
+    "peck_trigger_ratio", "peck_depth_ratio", "deep_feed_derate",
+    "peck_overhead_s", "point_allowance_ratio", "tap_pitch_fallback_ratio",
+}
 
 
 def _load_cutting(overrides: dict | None = None) -> dict:
@@ -63,7 +70,14 @@ def _load_cutting(overrides: dict | None = None) -> dict:
     """
     cut = json.loads(_CUTTING_PATH.read_text("utf-8"))
     for mat, fields in (overrides or {}).items():
-        if mat in cut.get("materials", {}):
+        if mat == "tools":                       # global cycle params
+            for f, v in fields.items():
+                if f in _CUTTING_GLOBAL_OVERRIDABLE:
+                    try:
+                        cut["tools"][f] = float(v)
+                    except (TypeError, ValueError):
+                        continue
+        elif mat in cut.get("materials", {}):
             for f, v in fields.items():
                 if f in _CUTTING_OVERRIDABLE:
                     try:
@@ -112,6 +126,12 @@ def _derive(cutting: dict, key: str) -> tuple[dict, dict]:
         "finish_endmill_d_mm": Df, "finish_stepover_mm": t["finish"]["stepover_mm"],
         "rapid_mm_min": t["rapid_mm_min"], "retract_mm": t["retract_mm"],
         "hole_approach_s": t.get("hole_approach_s", 4.0),
+        "peck_trigger_ratio": t.get("peck_trigger_ratio", 3.0),
+        "peck_depth_ratio": t.get("peck_depth_ratio", 1.0),
+        "deep_feed_derate": t.get("deep_feed_derate", 0.75),
+        "peck_overhead_s": t.get("peck_overhead_s", 0.4),
+        "point_allowance_ratio": t.get("point_allowance_ratio", 0.3),
+        "tap_pitch_fallback_ratio": t.get("tap_pitch_fallback_ratio", 0.15),
     }
     return cut, tools
 
@@ -343,14 +363,14 @@ def _simulate_finishing(mesh, bounds, cut, tools) -> tuple[float, dict]:
     return minutes, detail
 
 
-def _tap_pitch(dia_mm: float) -> float:
+def _tap_pitch(dia_mm: float, fallback_ratio: float = 0.15) -> float:
     """Coarse metric pitch for a tapped hole — from the standard thread table
     (shared with DFM's tap-drill advice), else a coarse-series approximation."""
     from ..dfm import _nearest_metric_thread
     th = _nearest_metric_thread(dia_mm)
     if th:
         return th[1]
-    return min(2.5, max(0.5, 0.15 * dia_mm))
+    return min(2.5, max(0.5, fallback_ratio * dia_mm))
 
 
 def _simulate_drilling(feat: FeatureSet, cut: dict, tools: dict) -> tuple[float, float, dict]:
@@ -362,21 +382,22 @@ def _simulate_drilling(feat: FeatureSet, cut: dict, tools: dict) -> tuple[float,
         # diameter-aware drill feed (smaller drills spin faster).
         drill_feed = _drill_feed(cut, h.diameter_mm)
         # 118° point must travel past the nominal depth to cut full diameter:
-        # point height = D/2·tan(31°) ≈ 0.3·D.
-        travel = h.depth_mm + 0.3 * h.diameter_mm
+        # point height = D/2·tan(31°) ≈ point_allowance_ratio·D.
+        travel = h.depth_mm + tools["point_allowance_ratio"] * h.diameter_mm
         # G83 practice (Haas/CNCCookbook): peck when depth > 3-4×D, peck depth
         # Q ≈ 1×D. Shallow holes are a single plunge.
         rapid = max(tools.get("rapid_mm_min", 24000.0), 1.0)
-        if h.depth_mm > 3.0 * h.diameter_mm and h.diameter_mm > 0:
-            # G83: peck depth Q ≈ 1×D; each peck retracts fully and re-approaches
-            # AT RAPID (air moves), plus a stop/reverse accel allowance per peck.
-            # Handbook depth derating: feed −25% for the portion beyond 3×D.
-            peck_depth = h.diameter_mm
+        trigger = tools["peck_trigger_ratio"] * h.diameter_mm
+        if h.depth_mm > trigger and h.diameter_mm > 0:
+            # G83: peck depth Q ≈ peck_depth_ratio×D; each peck retracts fully
+            # and re-approaches AT RAPID (air moves), plus a stop/reverse accel
+            # allowance per peck. Handbook depth derating beyond the trigger.
+            peck_depth = max(tools["peck_depth_ratio"] * h.diameter_mm, 0.1)
             pecks = max(1, math.ceil(travel / peck_depth))
-            shallow_part = 3.0 * h.diameter_mm
-            in_time = shallow_part / drill_feed + (travel - shallow_part) / (0.75 * drill_feed)
+            in_time = (trigger / drill_feed
+                       + (travel - trigger) / (tools["deep_feed_derate"] * drill_feed))
             air = 2.0 * peck_depth * pecks * (pecks + 1) / 2.0 / rapid
-            peck_overhead = air + pecks * (0.4 / 60.0)          # accel/decel + chip break
+            peck_overhead = air + pecks * (tools["peck_overhead_s"] / 60.0)
         else:
             # single plunge: no mid-cycle repositioning, just the final retract at rapid
             in_time = travel / drill_feed
@@ -387,7 +408,7 @@ def _simulate_drilling(feat: FeatureSet, cut: dict, tools: dict) -> tuple[float,
         if h.threaded:
             # Rigid tapping: feed is geometry-locked to pitch×RPM (not a free
             # parameter) — only the tapping SPEED varies by material.
-            pitch = _tap_pitch(h.diameter_mm)
+            pitch = _tap_pitch(h.diameter_mm, tools["tap_pitch_fallback_ratio"])
             rpm = cut.get("vc_tap", 10.0) * 1000.0 / (math.pi * max(h.diameter_mm, 0.5))
             tap_feed = max(rpm * pitch, 1e-6)
             tap_min += (approach_min + 2.0 * (h.depth_mm / tap_feed)) * h.count

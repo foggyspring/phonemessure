@@ -119,7 +119,8 @@
 | **攻丝(刚性)** | **进给被几何锁定 = 螺距×RPM,不是自由参数**;仅攻丝线速度 vc_tap 随材料(铝 20、304 5、316 4、钛 3 m/min,HSS-E 中值);螺距取自公制粗牙表(与 DFM 底孔表共用) | [Slugger 攻丝速度表](https://www.sluggertool.com/resources/tap-speed-chart/) · [CNClathing 攻丝公式](https://www.cnclathing.com/guide/cnc-tapping-speeds-and-feeds-chart-formula-calculator-metric-imperial) · [Haas 攻丝进给表](https://www.haascnc.com/content/dam/haascnc/ecommerce-assets/linedrawings/threading/taps/speed-n-feeds/(03-1562%20to%2003-1615)%20taps%20stainless%20steel,%20speeds%20and%20feeds,%20metric.pdf) |
 | **啄钻 G83** | 深度 >3-4×D 启用啄钻;每啄 Q≈1×D;退/回为**快移**空程(Σ当前深度×2/rapid)+每啄 0.4s 停转/换向余量;>3D 段进给降额 25%(手册深度降额) | [Haas G83](https://www.haascnc.com/service/codes-settings.type=gcode.machine=mill.value=G83.html) · [CNCCookbook G81/G73/G83](https://www.cnccookbook.com/g81-g73-g83-drill-peck-canned-cycle/) · [MachinistGuides G83](https://www.machinistguides.com/g83-code/) |
 | 钻尖行程 | 118° 钻尖需多走 ≈0.3×D 才到全径(纯几何: D/2·tan31°) | 几何推导 |
-| 逐孔开销 | 每孔 4s 定位/趋近/点孔余量(hole_approach_s, 可维护) | 车间惯例口径, 反标定可校 |
+| 逐孔开销 | 每孔 4s 定位/趋近/点孔余量(hole_approach_s) | 车间惯例口径, 反标定可校 |
+| **循环参数配置化** | 上述全部循环常数(啄钻触发/每啄深/降额/每啄余量/钻尖比/螺距近似比/快移/定位)入 `cutting.json` tools 节, 面板'切削→tools'运行时可改, 审计+可回退, 源码零魔数 | — |
 | 快移 | 24 m/min(Haas VF 级 25.4 m/min) | Haas VF 规格 |
 | 后端一致性 | 难加工材料(machinability≥2.5)螺纹在解析/刀路两后端均按螺纹铣计价(×thread_mill_factor) | 与 faq_thread_mill 同口径 |
 

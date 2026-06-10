@@ -20,7 +20,7 @@
 | 商务 | 利润率、税率、紧公差利润加成、加急系数、去毛刺基价/单价、包装、运费、起订额、报价有效期、日产能 daily_capacity_hours、刀耗 tool_wear_cny_per_hour、木箱阈值/费用 crate_* | `business` |
 | 系数 | 交期档(factor/days)、公差等级(margin/factor/inspection)、表面等级、增项费 | `business`（嵌套路径） |
 | 工时 | 编程基准/复杂度、首件、装夹/换刀工时、紧公差系数、每特征检测 inspection_min_per_feature、最小机时、毛坯余量 | `capp` |
-| 切削 | 按材料的 Vc/fz/切深/钻孔/攻丝进给 | `cutting` |
+| 切削 | 按材料的 Vc/fz/切深/钻孔/vc_tap;**通用循环参数**(选'tools'): 快移/退刀/下刀比/逐孔定位、啄钻触发比/每啄深比/深段降额/每啄余量/钻尖比/螺距近似比 | `cutting` |
 
 接口：`PUT /api/admin/price`（白名单校验 + 审计 **before→after**）、`DELETE /api/admin/price`
 （单条回退或 `scope=all`）、`GET /api/admin/config`（当前全量）、`GET /api/admin/audit`。

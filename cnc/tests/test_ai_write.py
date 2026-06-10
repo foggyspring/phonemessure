@@ -220,3 +220,23 @@ def test_cutting_override_flows_into_quote(client):
         "kind": "cutting", "key": "AL6061", "field": "vc_rough", "value": 30})  # crawl speed
     slow = quote()["plan"]["times"]["roughing_min"]
     assert slow > base * 2          # slower cutting speed → much longer roughing
+
+
+def test_drill_cycle_params_maintainable_via_tools_pseudokey(client):
+    # all drill/peck/tap cycle constants live in cutting.json tools — and are
+    # runtime-maintainable under kind="cutting", key="tools" (no hardcoding).
+    h = {"Authorization": f"Bearer {_token(client)}"}
+    cfg = client.get("/api/admin/config", headers=h).json()
+    assert {"peck_trigger_ratio", "peck_depth_ratio", "deep_feed_derate",
+            "peck_overhead_s", "point_allowance_ratio",
+            "hole_approach_s"} <= set(cfg["cutting"]["tools"])
+    r = client.put("/api/admin/price", headers=h, json={
+        "kind": "cutting", "key": "tools", "field": "peck_overhead_s", "value": 2.0})
+    assert r.status_code == 200 and r.json()["before"] == 0.4   # audited before-value
+    assert client.get("/api/admin/config", headers=h).json()["cutting"]["tools"]["peck_overhead_s"] == 2.0
+    # whitelist enforced; revert restores the default
+    assert client.put("/api/admin/price", headers=h, json={
+        "kind": "cutting", "key": "tools", "field": "bogus", "value": 1}).status_code == 400
+    client.request("DELETE", "/api/admin/price", headers=h,
+                   json={"kind": "cutting", "key": "tools", "field": "peck_overhead_s"})
+    assert client.get("/api/admin/config", headers=h).json()["cutting"]["tools"]["peck_overhead_s"] == 0.4

@@ -102,7 +102,10 @@ def _current_value(kind: str, key: str, field: str, base_shop):
         if kind == "capp":
             return base_shop.capp.get(field)
         if kind == "cutting":
-            return effective_cutting().get("materials", {}).get(key, {}).get(field)
+            cut = effective_cutting()
+            if key == "tools":
+                return cut.get("tools", {}).get(field)
+            return cut.get("materials", {}).get(key, {}).get(field)
     except Exception:
         return None
     return None

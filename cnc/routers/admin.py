@@ -108,12 +108,17 @@ def set_price(body: dict, _admin: dict = Depends(require_admin)) -> dict:
         key = key or "capp"
     elif kind == "cutting":
         from ..api import effective_cutting
-        from ..estimators.toolpath import _CUTTING_OVERRIDABLE
+        from ..estimators.toolpath import _CUTTING_GLOBAL_OVERRIDABLE, _CUTTING_OVERRIDABLE
         cut = effective_cutting()
-        if key not in cut.get("materials", {}):
-            raise HTTPException(status_code=404, detail=f"unknown cutting material '{key}'")
-        if field not in _CUTTING_OVERRIDABLE:
-            raise HTTPException(status_code=400, detail=f"field '{field}' not a maintainable cutting param")
+        if key == "tools":                       # global drill/peck/tap cycle knobs
+            if field not in _CUTTING_GLOBAL_OVERRIDABLE:
+                raise HTTPException(status_code=400,
+                                    detail=f"field '{field}' not a maintainable cycle param")
+        else:
+            if key not in cut.get("materials", {}):
+                raise HTTPException(status_code=404, detail=f"unknown cutting material '{key}'")
+            if field not in _CUTTING_OVERRIDABLE:
+                raise HTTPException(status_code=400, detail=f"field '{field}' not a maintainable cutting param")
     else:
         raise HTTPException(status_code=400, detail="invalid kind")
     # Capture the value being replaced for an auditable before→after trail.
@@ -141,7 +146,7 @@ def admin_config(_admin: dict = Depends(require_admin)) -> dict:
         _BUSINESS_NESTED, _BUSINESS_OVERRIDABLE, _CAPP_OVERRIDABLE, _OVERRIDE_FIELDS,
     )
     from ..api import effective_cutting
-    from ..estimators.toolpath import _CUTTING_OVERRIDABLE
+    from ..estimators.toolpath import _CUTTING_GLOBAL_OVERRIDABLE, _CUTTING_OVERRIDABLE
     shop, _ = _effective_shop()
     biz = shop.business
     tiers = {arr: [{"key": el.get("key"), "label": el.get("label", el.get("key")),
@@ -162,8 +167,12 @@ def admin_config(_admin: dict = Depends(require_admin)) -> dict:
         "business": {f: biz.get(f) for f in sorted(_BUSINESS_OVERRIDABLE) if biz.get(f) is not None},
         "tiers": tiers,
         "capp": {f: shop.capp.get(f) for f in sorted(_CAPP_OVERRIDABLE) if shop.capp.get(f) is not None},
-        "cutting": {m: {f: v.get(f) for f in sorted(_CUTTING_OVERRIDABLE) if v.get(f) is not None}
-                    for m, v in cut.get("materials", {}).items()},
+        "cutting": {
+            **{m: {f: v.get(f) for f in sorted(_CUTTING_OVERRIDABLE) if v.get(f) is not None}
+               for m, v in cut.get("materials", {}).items()},
+            "tools": {f: cut["tools"].get(f) for f in sorted(_CUTTING_GLOBAL_OVERRIDABLE)
+                      if cut["tools"].get(f) is not None},
+        },
     }
 
 
