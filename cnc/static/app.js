@@ -25,6 +25,25 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// Shared fetch wrapper. Resolves to { res, detail, authFailed }:
+//  - detail: error message from the JSON body's `detail` (or statusText) when !res.ok
+//  - authFailed: true when an authed call got 401/403 — the session is dropped
+//    (logout + login modal) and the caller should simply return.
+// Note: when !res.ok the body has already been consumed; use `detail`, not res.json().
+// Network errors reject like fetch() — callers keep their own try/catch.
+async function apiFetch(url, options, { authed = false } = {}) {
+  const res = await fetch(url, options);
+  if (authed && (res.status === 401 || res.status === 403)) {
+    logout(); openLogin();
+    return { res, authFailed: true };
+  }
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
+    return { res, detail };
+  }
+  return { res };
+}
+
 // Material → render look (color + metalness/roughness) for a believable preview.
 const MAT_LOOK = {
   AL: { color: 0xc7ced6, metal: 0.7, rough: 0.35 },
@@ -51,6 +70,11 @@ function lookForMaterial(key) {
 
 // ───────────────────────── 3D viewer ─────────────────────────
 let scene, camera, renderer, controls;
+// Render-on-demand: the rAF loop keeps ticking but only calls renderer.render()
+// when something changed (controls interaction/damping/autoRotate, or an
+// explicit invalidate() after scene mutations such as mesh load or recolor).
+let needsRender = true;
+function invalidate() { needsRender = true; }
 
 function initViewer() {
   const host = $("viewer");
@@ -68,6 +92,7 @@ function initViewer() {
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.autoRotateSpeed = 1.6;
+  controls.addEventListener("change", invalidate);
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x1a222c, 1.0));
   const key = new THREE.DirectionalLight(0xffffff, 1.15);
@@ -96,20 +121,31 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  invalidate();
 }
 
 function animate() {
   requestAnimationFrame(animate);
-  controls.update();
+  // update() returns true while the camera moves (user input, damping, autoRotate)
+  if (controls.update()) needsRender = true;
+  if (!needsRender) return;
+  needsRender = false;
   renderer.render(scene, camera);
+}
+
+function disposeMaterial(m) {
+  if (!m) return;
+  if (Array.isArray(m)) { m.forEach(disposeMaterial); return; }
+  m.map?.dispose?.();   // e.g. the CanvasTexture behind makeLabel() sprites
+  m.dispose?.();
 }
 
 function disposeObj(o) {
   if (!o) return;
   scene.remove(o);
-  o.traverse?.((c) => { c.geometry?.dispose?.(); c.material?.dispose?.(); });
+  o.traverse?.((c) => { c.geometry?.dispose?.(); disposeMaterial(c.material); });
   o.geometry?.dispose?.();
-  o.material?.dispose?.();
+  disposeMaterial(o.material);
 }
 
 function makeLabel(text) {
@@ -165,6 +201,7 @@ function frameDims(dims) {
   controls.update();
   const grid = scene.getObjectByName("grid");
   if (grid) { grid.position.y = -dims[1] / 2 - maxDim * 0.02; grid.scale.setScalar(Math.max(1, maxDim / 200)); }
+  invalidate();
 }
 
 function renderGeometry(dims, meshGeometry, materialKey) {
@@ -192,6 +229,7 @@ function renderGeometry(dims, meshGeometry, materialKey) {
   scene.add(state.bbox);
 
   frameDims(dims);
+  invalidate();
   $("drop").classList.add("loaded");
   $("viewer-toolbar").hidden = false;
 }
@@ -202,6 +240,7 @@ function recolorMesh(materialKey) {
   state.mesh.material.color.setHex(look.color);
   state.mesh.material.metalness = look.metal;
   state.mesh.material.roughness = look.rough;
+  invalidate();
 }
 
 // ───────────────────────── upload flow ─────────────────────────
@@ -218,27 +257,28 @@ async function handleFile(file) {
   $("viewer-spinner").classList.remove("hidden");
   $("viewer-meta").innerHTML = `解析中 <b>${esc(file.name)}</b> …`;
 
-  let res;
+  let r;
   try {
     const fd = new FormData();
     fd.append("file", file);
-    res = await fetch("/api/parse", { method: "POST", body: fd });
+    r = await apiFetch("/api/parse", { method: "POST", body: fd });
   } catch (e) {
     $("viewer-spinner").classList.add("hidden");
     toast("网络错误：" + e.message, "err");
+    state.fileBytes = null;
     return;
   }
   $("viewer-spinner").classList.add("hidden");
 
-  if (!res.ok) {
-    const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
-    toast(detail, "err", 6000);
+  if (!r.res.ok) {
+    toast(r.detail, "err", 6000);
     $("manual-box").classList.remove("hidden");
     state.geometry = null;
+    state.fileBytes = null;
     refreshQuoteEnabled();
     return;
   }
-  const data = await res.json();
+  const data = await r.res.json();
   state.geometry = data.geometry;
   $("manual-box").classList.add("hidden");
 
@@ -249,6 +289,7 @@ async function handleFile(file) {
     if (ext === "stl") geom = loader.parse(state.fileBytes);
     else if (data.preview_stl_b64) geom = loader.parse(b64ToArrayBuffer(data.preview_stl_b64));
   } catch { geom = null; }
+  state.fileBytes = null;   // free the upload buffer (up to 60 MB); only loader.parse needed it
   renderGeometry(data.geometry.dims_mm, geom, $("material").value);
 
   const g = data.geometry;
@@ -400,10 +441,9 @@ async function requestQuote(save) {
     const fd = new FormData();
     fd.append("params", JSON.stringify(buildParams(save)));
     if (state.file) fd.append("file", state.file);
-    const res = await fetch("/api/quote", { method: "POST", body: fd });
+    const { res, detail } = await apiFetch("/api/quote", { method: "POST", body: fd });
     if (seq !== quoteSeq) return;          // a newer request superseded this one
     if (!res.ok) {
-      const detail = (await res.json().catch(() => ({}))).detail || res.statusText;
       toast("报价失败：" + detail, "err", 6000);
       return;
     }
@@ -682,12 +722,13 @@ function renderAIPending(pending) {
 async function approveAI(pending) {
   if (!state.token) { toast("写操作需管理员登录", "err"); openLogin(); return; }
   try {
-    const r = await fetch("/api/ai/approve", {
+    const { res, detail, authFailed } = await apiFetch("/api/ai/approve", {
       method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ tool: pending.tool, arguments: pending.arguments, params: buildParams(false) }),
-    });
-    if (r.status === 401 || r.status === 403) { logout(); openLogin(); return; }
-    const d = await r.json();
+    }, { authed: true });
+    if (authFailed) return;
+    if (!res.ok) { appendAIMsg("bot", "执行失败：" + detail); return; }
+    const d = await res.json();
     appendAIMsg("bot", d.summary || (d.ok ? "已执行" : "执行失败"));
     if (d.ok) { loadShop(); if (state.hasQuoted) requestQuote(false); }
   } catch (e) { appendAIMsg("bot", "网络错误：" + e.message); }
@@ -862,13 +903,13 @@ async function submitCalibration() {
   if (!(actual > 0)) { toast("请输入有效的实测分钟", "err"); return; }
   const btn = $("cal-submit"); btn.classList.add("loading");
   try {
-    const r = await fetch("/api/calibration/actual", {
+    const { res, detail, authFailed } = await apiFetch("/api/calibration/actual", {
       method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ quote_id: state.lastPayload.id, actual_min: actual }),
-    });
-    if (r.status === 401 || r.status === 403) { logout(); openLogin(); return; }
-    if (!r.ok) { toast("提交失败：" + ((await r.json().catch(() => ({}))).detail || r.status), "err"); return; }
-    const d = await r.json();
+    }, { authed: true });
+    if (authFailed) return;
+    if (!res.ok) { toast("提交失败：" + detail, "err"); return; }
+    const d = await res.json();
     const f = d.factors?.[d.material];
     toast("已记录实测，材料因子 " + (f ? `×${f.factor} (n=${f.n})` : "样本不足"), "ok");
     requestQuote(false);   // re-quote to reflect the updated factor
@@ -1026,9 +1067,9 @@ async function openAdmin() {
   if (!state.token) { openLogin(); return; }
   let cfg;
   try {
-    const r = await fetch("/api/admin/config", { headers: authHeaders() });
-    if (r.status === 401 || r.status === 403) { logout(); openLogin(); return; }
-    cfg = await r.json();
+    const { res, authFailed } = await apiFetch("/api/admin/config", { headers: authHeaders() }, { authed: true });
+    if (authFailed) return;
+    cfg = await res.json();
   } catch { toast("加载配置失败", "err"); return; }
   // Render every overridable field the config returns (label excluded), so the
   // panel always reflects the full maintainable set without UI edits.
@@ -1090,18 +1131,16 @@ async function saveAdmin() {
   try {
     const failures = [];
     for (const i of changed) {
-      const r = await fetch("/api/admin/price", {
+      const { res, detail, authFailed } = await apiFetch("/api/admin/price", {
         method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ kind: i.dataset.kind, key: i.dataset.key, field: i.dataset.field, value: parseFloat(i.value) }),
-      });
-      if (r.status === 401 || r.status === 403) {
-        closeAdmin(); logout(); toast("登录已过期，请重新登录", "err"); openLogin();
+      }, { authed: true });
+      if (authFailed) {
+        closeAdmin(); toast("登录已过期，请重新登录", "err");
         return;
       }
-      if (!r.ok) {   // a 400 (e.g. out-of-range value) must not toast as success
-        const detail = (await r.json().catch(() => ({}))).detail || r.statusText;
+      if (!res.ok)   // a 400 (e.g. out-of-range value) must not toast as success
         failures.push(`${i.dataset.key || i.dataset.kind}/${i.dataset.field}: ${detail}`);
-      }
     }
     await loadShop();
     closeAdmin();
@@ -1196,12 +1235,15 @@ function wireToolbar() {
   $("toggle-bbox").addEventListener("click", (e) => {
     e.currentTarget.classList.toggle("active");
     if (state.bbox) state.bbox.visible = e.currentTarget.classList.contains("active");
+    invalidate();
   });
   $("toggle-spin").addEventListener("click", (e) => {
     e.currentTarget.classList.toggle("active");
     controls.autoRotate = e.currentTarget.classList.contains("active");
   });
   $("reset-view").addEventListener("click", () => { if (state.geometry) frameDims(state.geometry.dims_mm); });
+  // The drop-hint overlay is hidden once .dropzone.loaded — this stays clickable.
+  $("reupload").addEventListener("click", () => $("file").click());
 }
 
 // ───────────────────────── uploads ─────────────────────────
