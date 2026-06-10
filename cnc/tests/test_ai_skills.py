@@ -148,3 +148,31 @@ def test_skill_crud_requires_admin_and_audits(client):
     assert "faq_x" not in lib2 and "多少钱" in lib2["quote"]["triggers"]
     actions = [a["action"] for a in client.get("/api/admin/audit", headers=h).json()["audit"]]
     assert "save_skill" in actions and "delete_skill" in actions
+
+
+def test_enriched_knowledge_entries_route_correctly():
+    # the researched entries (ISO 2768 / corner-pocket / tap-drill / Ti / SS /
+    # anodize / cost-design / roughness) must answer directly with their facts
+    cases = {
+        "未注公差按什么标准": "ISO 2768",
+        "内角R角要多大": "1/3",
+        "M6攻丝底孔打多大": "Ø5",
+        "钛合金为什么贵": "6.7",          # thermal conductivity fact
+        "不锈钢难加工吗": "加工硬化",
+        "阳极氧化会影响尺寸吗": "MIL-A-8625",
+        "怎么设计更省成本": "20-40%",
+        "粗糙度Ra选多少": "3.2",
+    }
+    for q, fact in cases.items():
+        t = _ask(q)
+        assert not t.tool_calls and fact in t.text, (q, t.text[:50])
+
+
+def test_specific_faq_outranks_generic_explain_but_not_vice_versa():
+    # "钛合金为什么贵" contains 为什么 (explain trigger, prio 70) — the more
+    # specific titanium FAQ (prio 75) must win; a generic "为什么这个价" must
+    # still go to the explain tool, not any FAQ.
+    t = _ask("钛合金为什么贵")
+    assert not t.tool_calls and "导热" in t.text
+    t2 = _ask("为什么这个价格这么高")
+    assert [c.name for c in t2.tool_calls] == ["explain_quote"]

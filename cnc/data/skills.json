@@ -6,7 +6,13 @@
       "name": "录入实测工时 Calibrate",
       "kind": "action",
       "action": "record_actual_time",
-      "triggers": ["实测", "实际工时", "反标定", "校准工时", "calibrat"],
+      "triggers": [
+        "实测",
+        "实际工时",
+        "反标定",
+        "校准工时",
+        "calibrat"
+      ],
       "exclusive": true,
       "admin": true,
       "priority": 95,
@@ -19,7 +25,13 @@
       "name": "改价 Set price",
       "kind": "action",
       "action": "set_price",
-      "triggers": ["改价", "设置价格", "set price", "update price", "调价"],
+      "triggers": [
+        "改价",
+        "设置价格",
+        "set price",
+        "update price",
+        "调价"
+      ],
       "exclusive": true,
       "admin": true,
       "priority": 90,
@@ -31,8 +43,19 @@
       "key": "analyze",
       "name": "全面分析 Full analysis",
       "kind": "analyze",
-      "actions": ["get_quote", "analyze_dfm", "suggest_cheaper_material"],
-      "triggers": ["分析", "评估", "analyz", "review", "看看", "检查"],
+      "actions": [
+        "get_quote",
+        "analyze_dfm",
+        "suggest_cheaper_material"
+      ],
+      "triggers": [
+        "分析",
+        "评估",
+        "analyz",
+        "review",
+        "看看",
+        "检查"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 80,
@@ -45,7 +68,15 @@
       "name": "解释价格 Explain",
       "kind": "action",
       "action": "explain_quote",
-      "triggers": ["为什么", "为啥", "解释", "怎么算", "explain", "凭什么", "贵在"],
+      "triggers": [
+        "为什么",
+        "为啥",
+        "解释",
+        "怎么算",
+        "explain",
+        "凭什么",
+        "贵在"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 70,
@@ -58,7 +89,15 @@
       "name": "报价 Quote",
       "kind": "action",
       "action": "get_quote",
-      "triggers": ["报价", "多少钱", "价格", "quote", "price", "cost", "几钱"],
+      "triggers": [
+        "报价",
+        "多少钱",
+        "价格",
+        "quote",
+        "price",
+        "cost",
+        "几钱"
+      ],
       "exclusive": false,
       "admin": false,
       "priority": 50,
@@ -71,7 +110,11 @@
       "name": "材料对比 Compare",
       "kind": "action",
       "action": "compare_materials",
-      "triggers": ["对比", "比较", "compare"],
+      "triggers": [
+        "对比",
+        "比较",
+        "compare"
+      ],
       "exclusive": false,
       "admin": false,
       "priority": 45,
@@ -84,7 +127,13 @@
       "name": "更省材料 Cheaper",
       "kind": "action",
       "action": "suggest_cheaper_material",
-      "triggers": ["便宜", "更省", "省钱", "cheaper", "save"],
+      "triggers": [
+        "便宜",
+        "更省",
+        "省钱",
+        "cheaper",
+        "save"
+      ],
       "exclusive": false,
       "admin": false,
       "priority": 45,
@@ -97,7 +146,14 @@
       "name": "DFM 风险 DFM",
       "kind": "action",
       "action": "analyze_dfm",
-      "triggers": ["dfm", "可加工", "工艺", "风险", "问题", "manufactur"],
+      "triggers": [
+        "dfm",
+        "可加工",
+        "工艺",
+        "风险",
+        "问题",
+        "manufactur"
+      ],
       "exclusive": false,
       "admin": false,
       "priority": 45,
@@ -109,43 +165,65 @@
       "key": "faq_tolerance",
       "name": "公差怎么选 Tolerance choice",
       "kind": "knowledge",
-      "triggers": ["公差怎么选", "选什么公差", "公差建议", "tolerance choice", "用多少公差"],
+      "triggers": [
+        "公差怎么选",
+        "选什么公差",
+        "公差建议",
+        "tolerance choice",
+        "用多少公差"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 60,
       "builtin": true,
       "enabled": true,
-      "response": "标准 ±0.1 已满足绝大多数用途且最省钱；只对装配/定位的关键配合面单独标 ±0.05；±0.02(超精)需恒温间+三坐标全检，成本翻倍且大件难保证。建议：图纸上区分关键尺寸与非关键尺寸，按需标注。"
+      "response": "按 ISO 2768 一般公差思路选：标准 ±0.1(m 级,30-120mm 段)满足绝大多数用途且最省钱；只对装配/定位的关键配合面标 ±0.05(f 级)；±0.02 超精需恒温间+三坐标全检,成本翻倍且大件难保证。全图纸统一紧公差会让加工放慢、检验翻倍——仅对关键尺寸标注,非关键尺寸放标准公差,周期可省 20-40%。"
     },
     {
       "key": "faq_deep_hole",
       "name": "深孔工艺 Deep hole",
       "kind": "knowledge",
-      "triggers": ["深孔", "深径比", "孔很深", "deep hole"],
+      "triggers": [
+        "深孔",
+        "深径比",
+        "孔很深",
+        "deep hole"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 60,
       "builtin": true,
       "enabled": true,
-      "response": "深径比 >4 需啄钻(peck)排屑、工时上调；>10 需枪钻或确认能否双面加工。深孔还要注意排屑与冷却、孔的直线度。如非必要，缩短孔深或加大孔径能显著降本。"
+      "response": "行业阈值：深径比 >3-4 即属深孔,需啄钻(peck)排屑——典型每钻进 1-2 倍直径退刀一次；>10:1 视为超深孔,需枪钻(gun drill,可达 400:1)或双面加工。深孔注意排屑、冷却与直线度；理想深径比 ≤4:1。如非必要,缩短孔深或加大孔径能显著降本。"
     },
     {
       "key": "faq_thin_wall",
       "name": "薄壁工艺 Thin wall",
       "kind": "knowledge",
-      "triggers": ["薄壁", "壁太薄", "thin wall", "壁厚"],
+      "triggers": [
+        "薄壁",
+        "壁太薄",
+        "thin wall",
+        "壁厚"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 60,
       "builtin": true,
       "enabled": true,
-      "response": "壁厚 <1mm 易让刀/变形，难度系数上调；<0.5mm 风险很高。对策：增厚到 ≥1mm、预留工艺夹持后再去除、或分粗精多刀轻切。金属薄壁还要考虑去应力变形。"
+      "response": "行业准则：壁厚 <1mm 需降速多次精走刀,易让刀/颤纹；铝最薄可到 0.5mm(非承力),不锈钢因加工硬化至少 1mm。对策：增厚至 ≥1mm、预留工艺夹持后再去除、分粗精多刀轻切。金属薄壁还要考虑去应力变形。"
     },
     {
       "key": "faq_material_choice",
       "name": "选材建议 Material choice",
       "kind": "knowledge",
-      "triggers": ["选什么材料", "用什么材料", "材料怎么选", "material choice", "选材"],
+      "triggers": [
+        "选什么材料",
+        "用什么材料",
+        "材料怎么选",
+        "material choice",
+        "选材"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 60,
@@ -157,7 +235,13 @@
       "key": "faq_finish",
       "name": "表面处理选择 Finish choice",
       "kind": "knowledge",
-      "triggers": ["表面处理怎么选", "要不要阳极", "做什么表面", "finish choice", "喷砂还是阳极"],
+      "triggers": [
+        "表面处理怎么选",
+        "要不要阳极",
+        "做什么表面",
+        "finish choice",
+        "喷砂还是阳极"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 60,
@@ -169,7 +253,13 @@
       "key": "faq_unit",
       "name": "单位提醒 Units",
       "kind": "knowledge",
-      "triggers": ["单位", "英寸", "inch", "尺寸不对", "怎么这么小"],
+      "triggers": [
+        "单位",
+        "英寸",
+        "inch",
+        "尺寸不对",
+        "怎么这么小"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 60,
@@ -181,13 +271,169 @@
       "key": "faq_batch",
       "name": "批量与摊销 Batch economics",
       "kind": "knowledge",
-      "triggers": ["批量", "做多少划算", "量大", "一次做几个", "batch", "起订"],
+      "triggers": [
+        "批量",
+        "做多少划算",
+        "量大",
+        "一次做几个",
+        "batch",
+        "起订"
+      ],
       "exclusive": true,
       "admin": false,
       "priority": 60,
       "builtin": true,
       "enabled": true,
       "response": "小批量时编程+首件+装夹的一次性费用摊到每件占比很大，所以单价随数量明显下降，到某个'价格甜点'后趋平。订单还有最小起订额(低于则按起订计)。想找甜点，让助手'分析批量'或试不同数量看阶梯价。"
+    },
+    {
+      "key": "faq_iso2768",
+      "name": "未注公差 ISO 2768",
+      "kind": "knowledge",
+      "triggers": [
+        "未注公差",
+        "一般公差",
+        "iso 2768",
+        "2768",
+        "general tolerance"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "ISO 2768 一般公差分 f(精)/m(中)/c(粗)/v(最粗)四级。常用 m 级线性尺寸公差：0.5-3mm 段 ±0.1；3-6 ±0.1；6-30 ±0.2；30-120 ±0.3；120-400 ±0.5；400-1000 ±0.8。图纸标 'ISO 2768-m' 即对所有未注尺寸生效——本系统'标准 ±0.1'即对应中小件的 m 级口径。"
+    },
+    {
+      "key": "faq_corner_pocket",
+      "name": "内角R与腔深",
+      "kind": "knowledge",
+      "triggers": [
+        "内角",
+        "r角",
+        "圆角多大",
+        "腔深",
+        "深腔",
+        "corner radius",
+        "pocket depth"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "两条核心 DFM 规则(Protolabs/Xometry)：1) 内角圆角半径建议 ≥ 腔深的 1/3(刀具是圆的,内角必带 R；R 越小需越细的刀、越多走刀)；2) 型腔深度建议 ≤ 宽度的 4 倍,标准端铣刀可达 3:1,加长刀 6:1(更贵),再深考虑双面加工/EDM/拆件。绝对直角需 EDM 清角,成本另计。"
+    },
+    {
+      "key": "faq_tap_drill",
+      "name": "螺纹底孔常识",
+      "kind": "knowledge",
+      "triggers": [
+        "底孔",
+        "攻丝底孔",
+        "牙高率",
+        "tap drill",
+        "螺纹深度多少"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "公制粗牙底孔 ≈ 公称直径 − 螺距：M3×0.5→Ø2.5、M4×0.7→Ø3.3、M5×0.8→Ø4.2、M6×1→Ø5.0、M8×1.25→Ø6.75,对应约 70-75% 牙高率(强度与攻丝省力的平衡点)。螺纹有效深度建议 1.5-2×D(铝/塑料)；盲孔攻丝要留排屑余量,深于 2×D 收益递减。"
+    },
+    {
+      "key": "faq_titanium",
+      "name": "钛合金加工特性",
+      "kind": "knowledge",
+      "triggers": [
+        "钛合金为什么贵",
+        "钛难加工",
+        "钛合金注意",
+        "machining titanium",
+        "钛加工特性"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 75,
+      "builtin": true,
+      "enabled": true,
+      "response": "钛(TC4/Ti-6Al-4V)难加工的本质：导热率仅 6.7 W/m·K(约为钢的 1/6),切削热集中在刀尖；且显著加工硬化——刀具蹭而不切会让表层硬度升 10-20%。对策：线速度压低(硬质合金铣约 40-60 m/min)、保持稳定进给避免摩擦、大量冷却。所以钛件的机时与刀耗都高,报价系统已按可加工性 4.0 计。"
+    },
+    {
+      "key": "faq_stainless",
+      "name": "不锈钢加工特性",
+      "kind": "knowledge",
+      "triggers": [
+        "不锈钢难加工",
+        "不锈钢注意",
+        "304加工",
+        "stainless machining"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 75,
+      "builtin": true,
+      "enabled": true,
+      "response": "304/316 奥氏体不锈钢的要点是加工硬化：切削中表层会变硬,刀具停留摩擦会越切越硬。对策：保持进给不间断、避免轻切快蹭、用锋利刀具大切深一次切过硬化层。导热也差(约 16 W/m·K),需充分冷却。壁厚设计建议 ≥1mm(比铝厚)。"
+    },
+    {
+      "key": "faq_anodize_dim",
+      "name": "阳极氧化与尺寸",
+      "kind": "knowledge",
+      "triggers": [
+        "阳极氧化尺寸",
+        "阳极厚度",
+        "硬质阳极",
+        "阳极会",
+        "阳极后",
+        "阳极影响",
+        "影响尺寸",
+        "mil-a-8625"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "按 MIL-A-8625：II 型(普通阳极)膜厚约 5-20µm,其中约一半向内渗透、一半向外生长,单边长大仅 ~5µm,常规件可忽略；III 型(硬质阳极)膜厚可达 50µm+,单边长大 ~25µm,精密配合面/螺纹孔必须预留或保护(堵孔),且硬质阳极价格明显更高。紧公差件请在图纸注明'阳极后尺寸'还是'阳极前尺寸'。"
+    },
+    {
+      "key": "faq_cost_design",
+      "name": "降本设计要点",
+      "kind": "knowledge",
+      "triggers": [
+        "降本",
+        "降低成本",
+        "成本优化",
+        "怎么设计更省",
+        "cost reduction",
+        "为什么这么贵怎么改"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "行业公认的降本设计(Hubs/Protolabs)：1) 紧公差只标关键配合面,其余放 ±0.1,周期可省 20-40%；2) 孔深 ≤4×直径,腔深 ≤4×宽度；3) 用标准钻头直径(整数/常用规格),非标孔径要额外工序；4) 减少装夹面数,最好单面/两面完成；5) 内角 R 放大,让常规刀具一把过；6) 数量到价格甜点(摊销变平的拐点)。可以让我'分析批量'或直接看阶梯报价。"
+    },
+    {
+      "key": "faq_roughness",
+      "name": "表面粗糙度等级",
+      "kind": "knowledge",
+      "triggers": [
+        "粗糙度",
+        "ra多少",
+        "ra选",
+        "表面光洁度",
+        "surface roughness"
+      ],
+      "exclusive": true,
+      "admin": false,
+      "priority": 60,
+      "builtin": true,
+      "enabled": true,
+      "response": "机加工常用四档 Ra：3.2µm=标准 as-machined(铣削默认,大多数功能件够用)；1.6µm=细(液压件/可见外壳/慢速运动件)；0.8µm=精(密封面/精密配合)；0.4µm=镜面级,需额外抛光(光学/高密封/植入物)。每细一档,精加工走刀密度和时间显著增加——本系统表面等级系数即按此定价。"
     }
   ]
 }
