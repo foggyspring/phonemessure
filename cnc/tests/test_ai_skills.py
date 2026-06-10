@@ -176,3 +176,21 @@ def test_specific_faq_outranks_generic_explain_but_not_vice_versa():
     assert not t.tool_calls and "导热" in t.text
     t2 = _ask("为什么这个价格这么高")
     assert [c.name for c in t2.tool_calls] == ["explain_quote"]
+
+
+def test_round2_knowledge_entries_route_correctly():
+    # GD&T / ISO 286 fits / plastics / heat-treat / reaming / edge-break
+    cases = {
+        "位置度和平面度怎么选": "57%",
+        "轴和孔用什么配合": "H7/g6",
+        "POM还是尼龙好": "0.22%",
+        "T651和T6什么区别": "T651",
+        "H7的孔怎么加工": "铰",
+        "图纸上倒角怎么标": "C0.5",
+    }
+    for q, fact in cases.items():
+        t = _ask(q)
+        assert not t.tool_calls and fact in t.text, (q, t.text[:50])
+    # specific hole-machining intent outranks the fits table when both match
+    t = _ask("H7的孔怎么加工")
+    assert "钻孔" in t.text and "铰" in t.text
