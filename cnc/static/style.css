@@ -413,6 +413,14 @@ table.hist .h-id { color: var(--muted2); font-family: ui-monospace, "SF Mono", m
 .skill-field input, .skill-field textarea, .skill-field select { margin-top: 4px; }
 .skill-field textarea { resize: vertical; min-height: 48px; }
 
+/* ---------- custom materials ---------- */
+#admin-custom-materials { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.mat-meta { margin: 0; }
+.mat-del { margin-left: auto; }
+.mat-fins { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; }
+.mat-fin { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); margin: 0; }
+.mat-fin input { width: auto; margin: 0; }
+
 .dfm-sum { border-left: 3px solid var(--border2); padding-left: 9px; margin-bottom: 6px; }
 .dfm-sum.high { border-left-color: #d9534f; }
 .dfm-sum.medium { border-left-color: #e0922f; }

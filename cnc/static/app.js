@@ -1243,6 +1243,7 @@ async function openAdmin() {
   for (const m of Object.keys(state.adminCutting)) { const o = document.createElement("option"); o.value = m; o.textContent = m; sel.appendChild(o); }
   sel.onchange = renderAdminCutting; renderAdminCutting();
   renderSkills();
+  renderCustomMaterials();
   $("admin-modal").classList.remove("hidden");
 }
 
@@ -1367,6 +1368,112 @@ function openSkillAddForm() {
       payload.action = val("action");
     }
     if (await skillPut(payload)) { toast("已新增技能", "ok"); renderSkills(); }
+  });
+  wrap.appendChild(form);
+}
+
+// ───────────────────────── custom materials ─────────────────────────
+const MAT_CAT_LABEL = { metal: "金属", plastic: "塑料" };
+let _matMeta = null;  // cached {finishes, categories, ...} from GET /api/admin/materials
+
+// PUT a custom material; returns true on success (toast on failure).
+async function materialPut(payload) {
+  try {
+    const { res, detail, authFailed } = await apiFetch("/api/admin/materials", {
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    }, { authed: true });
+    if (authFailed) { closeAdmin(); toast("登录已过期，请重新登录", "err"); return false; }
+    if (!res.ok) { toast("保存失败：" + detail, "err"); return false; }
+    return true;
+  } catch (e) { toast("保存失败：" + e.message, "err"); return false; }
+}
+
+async function renderCustomMaterials() {
+  const wrap = $("admin-custom-materials");
+  if (!wrap) return;
+  let data;
+  try {
+    const { res, authFailed } = await apiFetch("/api/admin/materials", { headers: authHeaders() }, { authed: true });
+    if (authFailed) return;
+    data = await res.json();
+  } catch { toast("加载材料失败", "err"); return; }
+  _matMeta = data;
+  wrap.innerHTML = "";
+  const custom = data.custom || {};
+  if (!Object.keys(custom).length) {
+    const p = document.createElement("p");
+    p.className = "muted tiny"; p.textContent = "暂无自定义材料。";
+    wrap.appendChild(p);
+  }
+  for (const [key, m] of Object.entries(custom)) {
+    const row = document.createElement("div");
+    row.className = "skill-row mat-row";
+    const cat = MAT_CAT_LABEL[m.category] || m.category || "";
+    row.innerHTML =
+      `<div class="skill-head">` +
+        `<span class="skill-name">${esc(m.label || key)}</span>` +
+        `<span class="skill-origin custom">${esc(key)}</span>` +
+        `<span class="skill-origin">${esc(cat)}</span>` +
+        `<button class="ghost-btn small mat-del" data-del>删除</button>` +
+      `</div>` +
+      `<div class="mat-meta muted tiny">密度 ${esc(String(m.density_g_cm3 ?? ""))} g/cm³ · ` +
+        `单价 ¥${esc(String(m.price_cny_per_kg ?? ""))}/kg · 机加工性 ${esc(String(m.machinability ?? ""))}</div>`;
+    row.querySelector("[data-del]").addEventListener("click", async () => {
+      if (!confirm(`确定删除材料「${m.label || key}」？`)) return;
+      try {
+        const { res, detail, authFailed } = await apiFetch("/api/admin/materials/" + encodeURIComponent(key),
+          { method: "DELETE", headers: authHeaders() }, { authed: true });
+        if (authFailed) { closeAdmin(); toast("登录已过期，请重新登录", "err"); return; }
+        if (!res.ok) { toast("删除失败：" + detail, "err"); return; }
+        toast("删除成功", "ok"); renderCustomMaterials(); loadShop();
+      } catch (e) { toast("删除失败：" + e.message, "err"); }
+    });
+    wrap.appendChild(row);
+  }
+}
+
+// Inline "new custom material" form, appended to the materials pane.
+function openMaterialAddForm() {
+  const wrap = $("admin-custom-materials");
+  if (!wrap || wrap.querySelector(".mat-add-form")) return;
+  const finishes = (_matMeta && _matMeta.finishes) || [];
+  const finChecks = finishes.map((f) =>
+    `<label class="mat-fin"><input type="checkbox" data-fin value="${esc(f)}">${esc(f)}</label>`).join("");
+  const form = document.createElement("div");
+  form.className = "skill-row mat-add-form";
+  form.innerHTML =
+    `<div class="skill-head"><span class="skill-name">新增材料</span></div>` +
+    `<label class="skill-field">代号 key<input type="text" data-f="key" placeholder="CUSTOM_XXX"></label>` +
+    `<label class="skill-field">名称 label<input type="text" data-f="label"></label>` +
+    `<label class="skill-field">类别 category<select data-f="category"><option value="metal">金属 metal</option><option value="plastic">塑料 plastic</option></select></label>` +
+    `<label class="skill-field">密度 density_g_cm3<input type="number" step="0.01" data-f="density_g_cm3"></label>` +
+    `<label class="skill-field">单价 price_cny_per_kg<input type="number" step="0.1" data-f="price_cny_per_kg"></label>` +
+    `<label class="skill-field">机加工性 machinability<input type="number" step="0.01" data-f="machinability"></label>` +
+    `<label class="skill-field">抗拉强度 tensile_mpa（可选）<input type="number" step="1" data-f="tensile_mpa"></label>` +
+    `<label class="skill-field">废料抵扣率 scrap_credit_frac（可选）<input type="number" step="0.01" data-f="scrap_credit_frac"></label>` +
+    `<div class="skill-field">适用表面处理 finish_ok<div class="mat-fins">${finChecks || '<span class="muted tiny">无可选</span>'}</div></div>` +
+    `<div class="skill-head"><button class="primary small" data-save>保存</button><button class="ghost-btn small" data-cancel>取消</button></div>`;
+  form.querySelector("[data-cancel]").addEventListener("click", () => form.remove());
+  form.querySelector("[data-save]").addEventListener("click", async () => {
+    const val = (f) => form.querySelector(`[data-f="${f}"]`).value.trim();
+    const num = (f) => parseFloat(val(f));
+    const payload = {
+      key: val("key"), label: val("label"), category: val("category"),
+      density_g_cm3: num("density_g_cm3"), price_cny_per_kg: num("price_cny_per_kg"),
+      machinability: num("machinability"),
+    };
+    if (!payload.key || !payload.label ||
+        [payload.density_g_cm3, payload.price_cny_per_kg, payload.machinability].some((n) => isNaN(n))) {
+      toast("请填写 代号/名称/密度/单价/机加工性", "err"); return;
+    }
+    if (val("tensile_mpa")) payload.tensile_mpa = num("tensile_mpa");
+    if (val("scrap_credit_frac")) payload.scrap_credit_frac = num("scrap_credit_frac");
+    const finOk = [...form.querySelectorAll("[data-fin]:checked")].map((c) => c.value);
+    if (finOk.length) payload.finish_ok = finOk;
+    if (await materialPut(payload)) {
+      toast("已新增材料", "ok"); renderCustomMaterials(); loadShop();
+    }
   });
   wrap.appendChild(form);
 }
@@ -1532,8 +1639,10 @@ function main() {
     document.querySelectorAll(".admin-tab").forEach((x) => x.classList.toggle("on", x === t));
     document.querySelectorAll(".admin-pane").forEach((p) => p.classList.toggle("on", p.dataset.pane === name));
     if (name === "skills") renderSkills();
+    if (name === "materials") renderCustomMaterials();
   }));
   $("skill-add").addEventListener("click", openSkillAddForm);
+  $("material-add").addEventListener("click", openMaterialAddForm);
   $("admin-save").addEventListener("click", saveAdmin);
   $("admin-modal").addEventListener("click", (e) => { if (e.target.id === "admin-modal") closeAdmin(); });
   $("logout-btn").addEventListener("click", logout);

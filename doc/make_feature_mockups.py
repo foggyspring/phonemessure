@@ -251,3 +251,77 @@ if __name__ == "__main__":
     research()
     batch()
     skills_tab()
+
+
+def custom_material():
+    W, H = 720, 560
+    img, d = new(W, H)
+    mx, my, mw, mh = 30, 24, W - 60, H - 48
+    rr(d, (mx, my, mx + mw, my + mh), 12, fill=C["panel"], outline=C["border2"])
+    d.text((mx + 22, my + 18), "价格维护 · 材料", font=F(16), fill=C["text"])
+    d.text((mx + mw - 38, my + 16), "×", font=F(20), fill=C["muted"])
+    # tab bar (materials active)
+    tabs = ["材料", "机床", "表面处理", "商务", "系数", "工时", "切削", "技能库"]
+    tx, ty = mx + 22, my + 52
+    cur = tx
+    for i, t in enumerate(tabs):
+        w = d.textlength(t, font=F(12)) + 20
+        if i == 0:
+            d.text((cur + 10, ty + 4), t, font=F(12), fill=C["accent"])
+            d.line((cur, ty + 26, cur + w, ty + 26), fill=C["accent"], width=2)
+        else:
+            d.text((cur + 10, ty + 4), t, font=F(12), fill=C["muted"])
+        cur += w + 2
+    d.line((mx, ty + 26, mx + mw, ty + 26), fill=C["border"], width=1)
+    # builtin price rows (compact)
+    y = ty + 44
+    d.text((mx + 22, y), "内置材料单价 ¥/kg", font=F(11), fill=C["muted"]); y += 22
+    for label, val in [("铝 6061", "35.0"), ("不锈钢 304", "28.0"), ("钛合金 TC4", "380.0")]:
+        d.text((mx + 28, y), label, font=F(12), fill=C["muted"])
+        rr(d, (mx + 200, y - 4, mx + 320, y + 20), 6, fill=C["panel2"], outline=C["border"])
+        d.text((mx + 210, y), val, font=F(12), fill=C["text"]); y += 32
+    # custom materials subsection
+    d.line((mx + 22, y + 2, mx + mw - 22, y + 2), fill=C["border"], width=1); y += 16
+    d.text((mx + 22, y), "自定义材料 Custom materials", font=F(12), fill=C["text"])
+    rr(d, (mx + mw - 130, y - 4, mx + mw - 22, y + 22), 7, fill="#16263f", outline=C["accent"])
+    d.text((mx + mw - 118, y + 1), "+ 新增材料", font=F(12), fill=C["accent"]); y += 34
+    # one existing custom row
+    rr(d, (mx + 22, y, mx + mw - 22, y + 40), 8, fill=C["panel2"])
+    d.text((mx + 34, y + 6), "AL2024  铝 2024-T3", font=F(12), fill=C["text"])
+    d.text((mx + 34, y + 22), "metal · ¥48/kg · 机加工性 1.1 · 强度 470MPa · 喷砂/阳极",
+           font=F(10), fill=C["muted"])
+    rr(d, (mx + mw - 78, y + 8, mx + mw - 34, y + 32), 6, fill="#3a1d1d", outline=C["danger"])
+    d.text((mx + mw - 68, y + 12), "删除", font=F(11), fill=C["danger"]); y += 54
+    # the add form (inline)
+    rr(d, (mx + 22, y, mx + mw - 22, my + mh - 16), 10, fill="#12181f", outline=C["border"])
+    d.text((mx + 34, y + 10), "新增材料", font=F(12), fill=C["accent"])
+    fields = [("代号 key", "MG_AZ31"), ("名称 label", "镁合金 AZ31"),
+              ("类别", "metal ▾"), ("密度 g/cm³", "1.78"),
+              ("单价 ¥/kg", "60"), ("机加工性", "0.9"),
+              ("抗拉强度 MPa", "260"), ("废料抵扣率", "0.20")]
+    fx, fy = mx + 34, y + 34
+    for i, (lab, val) in enumerate(fields):
+        col = i % 2
+        x = fx + col * ((mw - 80) // 2 + 8)
+        yy = fy + (i // 2) * 44
+        d.text((x, yy), lab, font=F(10), fill=C["muted"])
+        rr(d, (x, yy + 14, x + (mw - 80) // 2 - 8, yy + 36), 6,
+           fill=C["panel2"], outline=C["border"])
+        d.text((x + 8, yy + 18), val, font=F(11), fill=C["text"])
+    by = fy + 4 * 44 + 4
+    d.text((mx + 34, by), "适用表面处理：", font=F(10), fill=C["muted"])
+    cx = mx + 130
+    for fin, on in [("无", True), ("喷砂", True), ("钝化", True), ("阳极", False)]:
+        col = C["accent"] if on else C["muted2"]
+        rr(d, (cx, by - 2, cx + d.textlength(fin, font=F(10)) + 16, by + 16), 9,
+           fill="#16263f" if on else C["panel2"], outline=col)
+        d.text((cx + 8, by + 1), fin, font=F(10), fill=col)
+        cx += d.textlength(fin, font=F(10)) + 26
+    rr(d, (mx + mw - 130, by - 4, mx + mw - 34, by + 22), 7, fill=C["accent"])
+    d.text((mx + mw - 116, by + 1), "保存材料", font=F(12), fill="#fff")
+    img.save("doc/img/ui-custom-material.png")
+    print("wrote doc/img/ui-custom-material.png")
+
+
+if __name__ == "__main__":
+    custom_material()
