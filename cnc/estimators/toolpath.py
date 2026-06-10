@@ -250,7 +250,22 @@ def _simulate_roughing(mesh, bounds, margin, cut, tools) -> tuple[float, dict]:
     levels = 0
     zcs = [z_top - (i + 0.5) * dz for i in range(n)]
     sections = _section_polys_batch(mesh, zcs)
+    # Deep-pocket tracking (skill faq_corner_pocket: cavity depth ≤ 4× width is
+    # the DFM guideline): interior rings of the even-odd section ARE the
+    # pockets — track the narrowest one across consecutive levels for free.
+    pocket_levels = 0
+    pocket_min_w = float("inf")
     for part in sections:
+        rings = []
+        if part is not None and not part.is_empty:
+            polys = getattr(part, "geoms", [part])
+            for poly in polys:
+                rings.extend(getattr(poly, "interiors", []))
+        if rings:
+            pocket_levels += 1
+            for r in rings:
+                x0, y0, x1, y1 = r.bounds
+                pocket_min_w = min(pocket_min_w, max(min(x1 - x0, y1 - y0), 1e-6))
         clear = stock if part is None else stock.difference(part)
         if clear.is_empty:
             continue
@@ -269,6 +284,12 @@ def _simulate_roughing(mesh, bounds, margin, cut, tools) -> tuple[float, dict]:
         "levels": levels, "path_len_mm": round(path_len, 1),
         "feed_mm_min": feed, "minutes": round(minutes, 2),
     }
+    if pocket_levels and pocket_min_w < float("inf"):
+        depth = pocket_levels * dz
+        if pocket_min_w > 0 and depth / pocket_min_w > 4.0:
+            detail["deep_pocket"] = {"depth_mm": round(depth, 1),
+                                     "min_width_mm": round(pocket_min_w, 1),
+                                     "ratio": round(depth / pocket_min_w, 1)}
     return minutes, detail
 
 
@@ -421,6 +442,10 @@ def plan_toolpath(
 
     try:
         rough_min, d = _simulate_roughing(mesh, bounds, margin, cut, tools); ops.append(d)
+        if d.get("deep_pocket"):
+            dp = d["deep_pocket"]
+            notes.append(f"深腔：腔深 {dp['depth_mm']:g}mm ≈ {dp['ratio']:g}×最窄宽 "
+                         f"{dp['min_width_mm']:g}mm（>4:1，标准刀具难达，需加长刀/EDM/双面）")
     except Exception as exc:
         rough_min = base.times.roughing_min
         notes.append(f"开粗仿真失败，回退解析值（{exc.__class__.__name__}）")

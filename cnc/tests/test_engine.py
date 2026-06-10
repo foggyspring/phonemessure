@@ -456,3 +456,54 @@ def test_precision_tolerance_adds_reaming_time_per_hole():
     assert any("钻+铰" in n for n in pre["plan"]["notes"])
     # standard class: no reaming surcharge
     assert not any("钻+铰" in n for n in std["plan"]["notes"])
+
+
+def test_inspection_time_scales_with_part_size():
+    # CMM probing travel grows with the part: a 300mm precision part inspects
+    # longer than a 50mm one with identical features (会议后续议题A).
+    import trimesh
+    big = trimesh.creation.box((300, 80, 30)); big.apply_translation((150, 40, 15))
+    sb = big.export(file_type="stl")
+    small = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=5,
+                                                 tolerance="precision"))
+    large = build_quote(metrics_from_stl_bytes(sb),
+                        QuoteRequest(material="AL6061", quantity=5, tolerance="precision"),
+                        mesh_stl=sb, backend="analytic")
+    assert large["plan"]["times"]["inspection_min"] > small["plan"]["times"]["inspection_min"]
+    assert any("大件检测行程" in n for n in large["plan"]["notes"])
+    # standard class (no gauging) is not size-scaled
+    std = build_quote(metrics_from_stl_bytes(sb),
+                      QuoteRequest(material="AL6061", quantity=5, tolerance="standard"),
+                      mesh_stl=sb, backend="analytic")
+    assert std["plan"]["times"]["inspection_min"] == 0.0
+
+
+def test_hard_material_threads_priced_as_thread_milling():
+    # 议题B: Ti/SS threads are quoted as thread milling (slower per hole than a
+    # tap ×machinability alone) — consistent with the hard_tap DFM advice.
+    holes = [Hole(diameter_mm=6.0, depth_mm=12.0, count=4, threaded=True)]
+    ti = build_quote(_metrics(), QuoteRequest(material="TITANIUM_TC4", quantity=2, holes=holes))
+    shop = load()
+    base_tap = shop.capp["tap_min_per_hole"] * shop.material("TITANIUM_TC4").machinability * 4
+    assert ti["plan"]["times"]["tapping_min"] > base_tap * 1.5   # thread_mill_factor applied
+    # aluminium stays plain tapping (no factor)
+    al = build_quote(_metrics(), QuoteRequest(material="AL6061", quantity=2, holes=holes))
+    base_al = shop.capp["tap_min_per_hole"] * 1.0 * 4
+    assert abs(al["plan"]["times"]["tapping_min"] - base_al) < 0.01
+
+
+def test_deep_pocket_detected_from_toolpath_sections():
+    # 议题C (skill faq_corner_pocket: cavity depth ≤4× width): a 40mm-deep,
+    # 8mm-wide interior slot (5:1) must be flagged; a wide shallow pocket not.
+    import trimesh
+    block = trimesh.creation.box((60, 60, 50)); block.apply_translation((30, 30, 25))
+    cav = trimesh.creation.box((8, 40, 80)); cav.apply_translation((30, 30, 50))
+    sb = block.difference(cav).export(file_type="stl")
+    q = build_quote(metrics_from_stl_bytes(sb), QuoteRequest(material="AL6061", quantity=5),
+                    mesh_stl=sb)
+    assert any("深腔" in n for n in q["plan"]["notes"])
+    wide = trimesh.creation.box((30, 40, 20)); wide.apply_translation((30, 30, 50))
+    sb2 = block.difference(wide).export(file_type="stl")
+    q2 = build_quote(metrics_from_stl_bytes(sb2), QuoteRequest(material="AL6061", quantity=5),
+                     mesh_stl=sb2)
+    assert not any("深腔" in n for n in q2["plan"]["notes"])

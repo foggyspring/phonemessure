@@ -20,6 +20,7 @@
     "drill_min_per_hole_base": 0.35,
     "drill_min_per_mm_depth": 0.04,
     "tap_min_per_hole": 0.9,
+    "thread_mill_factor": 1.6,
     "ream_min_per_hole": 1.2,
     "fixture_min_per_setup": 12.0,
     "toolchange_min_per_tool": 0.5,
@@ -29,6 +30,7 @@
     "tight_tolerance_machining_factor": 1.35,
     "tight_tolerance_inspection_min_per_part": 6.0,
     "inspection_min_per_feature": 0.3,
+    "inspection_min_per_100mm": 1.0,
     "min_machine_min_per_part": 3.0,
     "stock_plate_mm": [
       3,

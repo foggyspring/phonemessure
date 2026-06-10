@@ -233,7 +233,13 @@ def plan(
             per_hole *= 1.5  # peck-drilling penalty
         drilling_min += per_hole * h.count
         if h.threaded:
-            tapping_min += capp["tap_min_per_hole"] * material.machinability * h.count
+            per_thread = capp["tap_min_per_hole"] * material.machinability
+            # Hard materials (Ti/SS, machinability ≥2.5): quote THREAD MILLING —
+            # slower per hole than tapping but a broken cutter doesn't scrap the
+            # part (matches the hard_tap DFM advice; one process, one price).
+            if material.machinability >= 2.5:
+                per_thread *= capp.get("thread_mill_factor", 1.6)
+            tapping_min += per_thread * h.count
     # Precision tolerance classes imply drill+REAM hole-making (drilling alone
     # holds only ~H12-H14; H7 needs a reamer pass, 0.1-0.3mm/side stock) — a
     # real extra operation per hole that a flat machining_factor under-counts.
@@ -270,6 +276,13 @@ def plan(
             extra = per_feature * n_features
             inspection_min += extra
             notes.append(f"检测随特征数叠加：{n_features} 处 × {per_feature:g}min = {extra:.1f}min")
+        # CMM probing time also grows with part size (travel + re-fixturing on
+        # the granite): add a per-100mm-of-longest-edge term for gauged parts.
+        longest = max(feat.metrics.dims_mm)
+        if longest > 100:
+            size_extra = capp.get("inspection_min_per_100mm", 1.0) * (longest - 100) / 100.0
+            inspection_min += size_extra
+            notes.append(f"大件检测行程：最长边 {longest:.0f}mm，检测 +{size_extra:.1f}min")
     if tol_factor != 1.0:
         roughing_min *= tol_factor
         finishing_min *= tol_factor
