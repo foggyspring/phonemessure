@@ -107,3 +107,55 @@ def test_knowledge_numeric_facts_are_internally_consistent():
     for nom, cb in ((3, 6.5), (4, 8), (5, 9.5), (6, 11), (8, 14)):
         assert f"Ø{cb:g}" in resp, (nom, cb)
         assert cb >= 1.5 * nom - 0.6
+
+
+def test_tapping_feed_is_geometry_locked_to_pitch():
+    # Rigid-tapping physics: feed MUST equal pitch × RPM — it is not a free
+    # parameter. The sim's M6 tap time must match the closed-form exactly.
+    import math
+
+    from cnc.estimators.toolpath import (
+        _derive,
+        _load_cutting,
+        _simulate_drilling,
+        _tap_pitch,
+    )
+    from cnc.geometry import metrics_from_stl_bytes
+    from cnc.geometry.features import analyze
+    from cnc.tests.fixtures import cube_stl
+    cut, tools = _derive(_load_cutting(), "AL6061")
+    m = metrics_from_stl_bytes(cube_stl(50.0))
+    dia, depth = 6.0, 12.0
+    pitch = _tap_pitch(dia)
+    assert pitch == 1.0                                  # M6 coarse
+    rpm = cut["vc_tap"] * 1000.0 / (math.pi * dia)
+    expect = tools["hole_approach_s"] / 60.0 + 2.0 * depth / (rpm * pitch)
+    _, tap, _ = _simulate_drilling(
+        analyze(m, holes=[Hole(diameter_mm=dia, depth_mm=depth, count=1, threaded=True)]),
+        cut, tools)
+    assert abs(tap - expect) < 1e-9
+    # and the material speeds follow the tap charts' ordering: Al ≫ SS ≫ Ti
+    mats = _load_cutting()["materials"]
+    assert mats["AL6061"]["vc_tap"] > mats["SUS304"]["vc_tap"] > mats["TITANIUM_TC4"]["vc_tap"]
+
+
+def test_both_backends_agree_hard_threads_are_thread_milled():
+    # the analytic backend prices Ti threads with thread_mill_factor; the
+    # toolpath backend must apply the same factor (they previously disagreed).
+    from cnc.engine import load as _load
+    from cnc.estimators import toolpath as tp
+    from cnc.geometry import metrics_from_stl_bytes
+    from cnc.geometry.features import analyze
+    from cnc.tests.fixtures import cube_stl
+    shop = _load()
+    holes = [Hole(diameter_mm=6.0, depth_mm=12.0, count=4, threaded=True)]
+    feat = analyze(metrics_from_stl_bytes(cube_stl(50.0)), holes=holes)
+    mesh = tp.load_mesh(cube_stl(50.0))
+    ti = tp.plan_toolpath(feat, shop.material("TITANIUM_TC4"), shop, mesh)
+    # strip the factor → must be smaller than the quoted tapping time
+    factor = shop.capp["thread_mill_factor"]
+    assert factor > 1.0
+    al = tp.plan_toolpath(feat, shop.material("AL6061"), shop, mesh)
+    # Ti tapping must exceed Al by far more than the speed ratio alone would
+    # give without the factor (vc 20/3 ≈ 6.7×, plus ×1.6 thread mill)
+    assert ti.times.tapping_min > al.times.tapping_min * 2.0

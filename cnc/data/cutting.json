@@ -1,23 +1,142 @@
 {
-  "_comment": "Physics-based feeds/speeds. Per material: cutting speed Vc (m/min) and chip load fz (mm/tooth) for roughing, finishing and drilling — the handbook parameters. The estimator derives feed = fz × teeth × RPM, RPM = Vc·1000/(π·D), so feeds respond to the actual tool/hole diameter (e.g. small drills spin faster). Tune Vc/fz to your tooling; calibration then corrects residual bias from real cycle times.",
+  "_comment": "Physics-based feeds/speeds. Per material: cutting speed Vc (m/min) and chip load fz (mm/tooth) for roughing/finishing/drilling, plus vc_tap (tapping speed) — feed while tapping is GEOMETRY-LOCKED to pitch x RPM (rigid tapping), so only the speed is a parameter. The estimator derives feed = fz x teeth x RPM, RPM = Vc*1000/(pi*D). Tune to your tooling; calibration corrects residual bias from real cycle times. Sources: doc/cost-model.md 切削参数依据.",
   "tools": {
-    "rough": {"diameter_mm": 10.0, "teeth": 4, "stepover_frac": 0.45},
-    "finish": {"diameter_mm": 6.0, "teeth": 4, "stepover_mm": 0.35},
-    "rapid_mm_min": 12000.0,
+    "rough": {
+      "diameter_mm": 10.0,
+      "teeth": 4,
+      "stepover_frac": 0.45
+    },
+    "finish": {
+      "diameter_mm": 6.0,
+      "teeth": 4,
+      "stepover_mm": 0.35
+    },
+    "rapid_mm_min": 24000.0,
     "retract_mm": 2.0,
-    "plunge_feed_frac": 0.35
+    "plunge_feed_frac": 0.35,
+    "hole_approach_s": 4.0
   },
   "materials": {
-    "AL6061":       {"vc_rough": 320, "fz_rough": 0.061, "vc_finish": 380, "fz_finish": 0.025, "rough_stepdown_mm": 2.5, "finish_stepdown_mm": 0.6, "vc_drill": 80, "fz_drill": 0.075, "tap_feed_mm_min": 500},
-    "AL7075":       {"vc_rough": 280, "fz_rough": 0.056, "vc_finish": 340, "fz_finish": 0.022, "rough_stepdown_mm": 2.0, "finish_stepdown_mm": 0.5, "vc_drill": 70, "fz_drill": 0.07,  "tap_feed_mm_min": 420},
-    "SUS304":       {"vc_rough": 120, "fz_rough": 0.052, "vc_finish": 140, "fz_finish": 0.022, "rough_stepdown_mm": 1.0, "finish_stepdown_mm": 0.3, "vc_drill": 25, "fz_drill": 0.068, "tap_feed_mm_min": 150},
-    "SUS316":       {"vc_rough": 100, "fz_rough": 0.055, "vc_finish": 120, "fz_finish": 0.022, "rough_stepdown_mm": 0.9, "finish_stepdown_mm": 0.3, "vc_drill": 22, "fz_drill": 0.066, "tap_feed_mm_min": 130},
-    "BRASS_C360":   {"vc_rough": 400, "fz_rough": 0.059, "vc_finish": 450, "fz_finish": 0.025, "rough_stepdown_mm": 2.8, "finish_stepdown_mm": 0.6, "vc_drill": 110,"fz_drill": 0.08,  "tap_feed_mm_min": 600},
-    "COPPER_C110":  {"vc_rough": 200, "fz_rough": 0.055, "vc_finish": 240, "fz_finish": 0.022, "rough_stepdown_mm": 1.6, "finish_stepdown_mm": 0.4, "vc_drill": 60, "fz_drill": 0.07,  "tap_feed_mm_min": 300},
-    "TITANIUM_TC4": {"vc_rough": 45,  "fz_rough": 0.079, "vc_finish": 55,  "fz_finish": 0.031, "rough_stepdown_mm": 0.6, "finish_stepdown_mm": 0.2, "vc_drill": 18, "fz_drill": 0.058, "tap_feed_mm_min": 90},
-    "POM":          {"vc_rough": 450, "fz_rough": 0.061, "vc_finish": 500, "fz_finish": 0.026, "rough_stepdown_mm": 3.0, "finish_stepdown_mm": 0.7, "vc_drill": 120,"fz_drill": 0.09,  "tap_feed_mm_min": 700},
-    "ABS":          {"vc_rough": 500, "fz_rough": 0.063, "vc_finish": 550, "fz_finish": 0.027, "rough_stepdown_mm": 3.5, "finish_stepdown_mm": 0.8, "vc_drill": 140,"fz_drill": 0.1,   "tap_feed_mm_min": 800},
-    "PA6":          {"vc_rough": 450, "fz_rough": 0.061, "vc_finish": 500, "fz_finish": 0.026, "rough_stepdown_mm": 3.0, "finish_stepdown_mm": 0.7, "vc_drill": 120,"fz_drill": 0.09,  "tap_feed_mm_min": 700}
+    "AL6061": {
+      "vc_rough": 320,
+      "fz_rough": 0.061,
+      "vc_finish": 380,
+      "fz_finish": 0.025,
+      "rough_stepdown_mm": 2.5,
+      "finish_stepdown_mm": 0.6,
+      "vc_drill": 80,
+      "fz_drill": 0.075,
+      "vc_tap": 20
+    },
+    "AL7075": {
+      "vc_rough": 280,
+      "fz_rough": 0.056,
+      "vc_finish": 340,
+      "fz_finish": 0.022,
+      "rough_stepdown_mm": 2.0,
+      "finish_stepdown_mm": 0.5,
+      "vc_drill": 70,
+      "fz_drill": 0.07,
+      "vc_tap": 15
+    },
+    "SUS304": {
+      "vc_rough": 120,
+      "fz_rough": 0.052,
+      "vc_finish": 140,
+      "fz_finish": 0.022,
+      "rough_stepdown_mm": 1.0,
+      "finish_stepdown_mm": 0.3,
+      "vc_drill": 25,
+      "fz_drill": 0.068,
+      "vc_tap": 5
+    },
+    "SUS316": {
+      "vc_rough": 100,
+      "fz_rough": 0.055,
+      "vc_finish": 120,
+      "fz_finish": 0.022,
+      "rough_stepdown_mm": 0.9,
+      "finish_stepdown_mm": 0.3,
+      "vc_drill": 22,
+      "fz_drill": 0.066,
+      "vc_tap": 4
+    },
+    "BRASS_C360": {
+      "vc_rough": 400,
+      "fz_rough": 0.059,
+      "vc_finish": 450,
+      "fz_finish": 0.025,
+      "rough_stepdown_mm": 2.8,
+      "finish_stepdown_mm": 0.6,
+      "vc_drill": 110,
+      "fz_drill": 0.08,
+      "vc_tap": 25
+    },
+    "COPPER_C110": {
+      "vc_rough": 200,
+      "fz_rough": 0.055,
+      "vc_finish": 240,
+      "fz_finish": 0.022,
+      "rough_stepdown_mm": 1.6,
+      "finish_stepdown_mm": 0.4,
+      "vc_drill": 60,
+      "fz_drill": 0.07,
+      "vc_tap": 12
+    },
+    "TITANIUM_TC4": {
+      "vc_rough": 45,
+      "fz_rough": 0.079,
+      "vc_finish": 55,
+      "fz_finish": 0.031,
+      "rough_stepdown_mm": 0.6,
+      "finish_stepdown_mm": 0.2,
+      "vc_drill": 18,
+      "fz_drill": 0.058,
+      "vc_tap": 3
+    },
+    "POM": {
+      "vc_rough": 450,
+      "fz_rough": 0.061,
+      "vc_finish": 500,
+      "fz_finish": 0.026,
+      "rough_stepdown_mm": 3.0,
+      "finish_stepdown_mm": 0.7,
+      "vc_drill": 120,
+      "fz_drill": 0.09,
+      "vc_tap": 25
+    },
+    "ABS": {
+      "vc_rough": 500,
+      "fz_rough": 0.063,
+      "vc_finish": 550,
+      "fz_finish": 0.027,
+      "rough_stepdown_mm": 3.5,
+      "finish_stepdown_mm": 0.8,
+      "vc_drill": 140,
+      "fz_drill": 0.1,
+      "vc_tap": 30
+    },
+    "PA6": {
+      "vc_rough": 450,
+      "fz_rough": 0.061,
+      "vc_finish": 500,
+      "fz_finish": 0.026,
+      "rough_stepdown_mm": 3.0,
+      "finish_stepdown_mm": 0.7,
+      "vc_drill": 120,
+      "fz_drill": 0.09,
+      "vc_tap": 25
+    }
   },
-  "default": {"vc_rough": 200, "fz_rough": 0.05, "vc_finish": 240, "fz_finish": 0.02, "rough_stepdown_mm": 1.5, "finish_stepdown_mm": 0.4, "vc_drill": 50, "fz_drill": 0.06, "tap_feed_mm_min": 350}
+  "default": {
+    "vc_rough": 200,
+    "fz_rough": 0.05,
+    "vc_finish": 240,
+    "fz_finish": 0.02,
+    "rough_stepdown_mm": 1.5,
+    "finish_stepdown_mm": 0.4,
+    "vc_drill": 50,
+    "fz_drill": 0.06,
+    "vc_tap": 10
+  }
 }

@@ -109,6 +109,23 @@
 
 ---
 
+## 五·五、切削参数依据 Machining-model sources
+
+刀路仿真的切削/钻孔/攻丝模型按权威资料校准,关键口径与出处:
+
+| 模型要素 | 口径 | 出处 |
+|----------|------|------|
+| 铣削进给 | feed = fz×齿数×RPM, RPM = Vc·1000/(πD);Vc/fz 按硬质合金手册区间(铝 320/380, 304 不锈钢 120/140, 钛 45/55 m/min) | 通用切削手册口径(Sandvik/Kennametal 级) |
+| **攻丝(刚性)** | **进给被几何锁定 = 螺距×RPM,不是自由参数**;仅攻丝线速度 vc_tap 随材料(铝 20、304 5、316 4、钛 3 m/min,HSS-E 中值);螺距取自公制粗牙表(与 DFM 底孔表共用) | [Slugger 攻丝速度表](https://www.sluggertool.com/resources/tap-speed-chart/) · [CNClathing 攻丝公式](https://www.cnclathing.com/guide/cnc-tapping-speeds-and-feeds-chart-formula-calculator-metric-imperial) · [Haas 攻丝进给表](https://www.haascnc.com/content/dam/haascnc/ecommerce-assets/linedrawings/threading/taps/speed-n-feeds/(03-1562%20to%2003-1615)%20taps%20stainless%20steel,%20speeds%20and%20feeds,%20metric.pdf) |
+| **啄钻 G83** | 深度 >3-4×D 启用啄钻;每啄 Q≈1×D;退/回为**快移**空程(Σ当前深度×2/rapid)+每啄 0.4s 停转/换向余量;>3D 段进给降额 25%(手册深度降额) | [Haas G83](https://www.haascnc.com/service/codes-settings.type=gcode.machine=mill.value=G83.html) · [CNCCookbook G81/G73/G83](https://www.cnccookbook.com/g81-g73-g83-drill-peck-canned-cycle/) · [MachinistGuides G83](https://www.machinistguides.com/g83-code/) |
+| 钻尖行程 | 118° 钻尖需多走 ≈0.3×D 才到全径(纯几何: D/2·tan31°) | 几何推导 |
+| 逐孔开销 | 每孔 4s 定位/趋近/点孔余量(hole_approach_s, 可维护) | 车间惯例口径, 反标定可校 |
+| 快移 | 24 m/min(Haas VF 级 25.4 m/min) | Haas VF 规格 |
+| 后端一致性 | 难加工材料(machinability≥2.5)螺纹在解析/刀路两后端均按螺纹铣计价(×thread_mill_factor) | 与 faq_thread_mill 同口径 |
+
+> 一致性锁: `test_knowledge_consistency.py` 断言攻丝 feed=pitch×RPM 闭式吻合、
+> vc_tap 排序(铝≫不锈钢≫钛)、两后端螺纹铣口径一致——任一侧漂移即红。
+
 ## 六、可维护参数总表
 
 全部参数可在管理面板按标签页维护（见 [price-maintenance.md](price-maintenance.md)），
@@ -122,7 +139,7 @@
 | `business` | margin, tax_rate, tight_tolerance_margin_bonus, rush_factor, deburr_base_cny, deburr_per_dm2_cny, packaging_cny, shipping_cny_per_kg, min_order_cny, quote_valid_days, **daily_capacity_hours**, **tool_wear_cny_per_hour**, **crate_threshold_kg**, **crate_cny** |
 | `business`（嵌套） | lead_time_tiers.*.{factor,days}, tolerance_classes.*.{margin_bonus,machining_factor,inspection_min}, surface_classes.*.finish_factor, addons.*.{batch_cny,per_part_cny} |
 | `capp` | fixture_min_per_setup, toolchange_min_per_tool, programming_min_base, programming_min_per_complexity, first_article_min, tight_tolerance_machining_factor, tight_tolerance_inspection_min_per_part, **inspection_min_per_feature**, min_machine_min_per_part, stock_margin_mm |
-| `cutting` | 按材料 vc/fz/切深/钻孔/攻丝进给 |
+| `cutting` | 按材料 vc/fz/切深/钻孔 + **vc_tap**(攻丝速度;进给=螺距×RPM 几何锁定) |
 
 （**加粗**为多角色迭代新增字段。）
 
@@ -157,4 +174,4 @@
 | 23 | 客服 | 报价假设清单 |
 | 24 | 装配/质量 | 公差-尺寸可行性 |
 
-测试：`pytest`（206 通过，含 slow）；快速套件 `pytest -m "not slow"`（205）。
+测试：`pytest` 全量 269 通过(含一致性锁/契约/全链路集成)。

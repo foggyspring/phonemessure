@@ -50,7 +50,7 @@ class ToolpathUnavailable(RuntimeError):
 # Per-material feeds/speeds an operator may maintain at runtime.
 _CUTTING_OVERRIDABLE = {
     "vc_rough", "fz_rough", "vc_finish", "fz_finish", "rough_stepdown_mm",
-    "finish_stepdown_mm", "vc_drill", "fz_drill", "tap_feed_mm_min",
+    "finish_stepdown_mm", "vc_drill", "fz_drill", "vc_tap",
 }
 
 
@@ -104,13 +104,14 @@ def _derive(cutting: dict, key: str) -> tuple[dict, dict]:
         "rough_stepdown_mm": raw["rough_stepdown_mm"],
         "finish_stepdown_mm": raw["finish_stepdown_mm"],
         "plunge_feed_mm_min": rough_feed * t.get("plunge_feed_frac", 0.35),
-        "tap_feed_mm_min": raw["tap_feed_mm_min"],
+        "vc_tap": raw.get("vc_tap", 10.0),
         "vc_drill": raw["vc_drill"], "fz_drill": raw["fz_drill"],
     }
     tools = {
         "rough_endmill_d_mm": Dr, "rough_stepover_frac": t["rough"]["stepover_frac"],
         "finish_endmill_d_mm": Df, "finish_stepover_mm": t["finish"]["stepover_mm"],
         "rapid_mm_min": t["rapid_mm_min"], "retract_mm": t["retract_mm"],
+        "hole_approach_s": t.get("hole_approach_s", 4.0),
     }
     return cut, tools
 
@@ -342,29 +343,54 @@ def _simulate_finishing(mesh, bounds, cut, tools) -> tuple[float, dict]:
     return minutes, detail
 
 
-def _simulate_drilling(feat: FeatureSet, cut: dict) -> tuple[float, float, dict]:
-    tap_feed = cut["tap_feed_mm_min"]
+def _tap_pitch(dia_mm: float) -> float:
+    """Coarse metric pitch for a tapped hole — from the standard thread table
+    (shared with DFM's tap-drill advice), else a coarse-series approximation."""
+    from ..dfm import _nearest_metric_thread
+    th = _nearest_metric_thread(dia_mm)
+    if th:
+        return th[1]
+    return min(2.5, max(0.5, 0.15 * dia_mm))
+
+
+def _simulate_drilling(feat: FeatureSet, cut: dict, tools: dict) -> tuple[float, float, dict]:
+    approach_min = tools.get("hole_approach_s", 4.0) / 60.0
     drill_min = 0.0
     tap_min = 0.0
     total_depth = 0.0
     for h in feat.holes:
-        # diameter-aware drill feed (smaller drills spin faster), peck cycle.
+        # diameter-aware drill feed (smaller drills spin faster).
         drill_feed = _drill_feed(cut, h.diameter_mm)
-        peck = max(1, math.ceil(h.depth_mm / max(3.0 * h.diameter_mm, 1e-3)))
-        in_time = h.depth_mm / drill_feed
-        # Peck retract/re-plunge overhead GROWS with the peck count: each peck
-        # clears chips by retracting and rapiding back to just above the last
-        # depth, so the repositioning travel ≈ Σ(current depth) = depth·(peck+1)/2.
-        # (The old form `peck*(depth/peck)` cancelled to depth, ignoring pecks.)
-        peck_depth = h.depth_mm / peck
-        reposition = peck_depth * peck * (peck + 1) / 2.0     # = depth·(peck+1)/2
-        retract_time = reposition / max(cut["plunge_feed_mm_min"], 1e-6)
-        per = in_time + retract_time
+        # 118° point must travel past the nominal depth to cut full diameter:
+        # point height = D/2·tan(31°) ≈ 0.3·D.
+        travel = h.depth_mm + 0.3 * h.diameter_mm
+        # G83 practice (Haas/CNCCookbook): peck when depth > 3-4×D, peck depth
+        # Q ≈ 1×D. Shallow holes are a single plunge.
+        rapid = max(tools.get("rapid_mm_min", 24000.0), 1.0)
+        if h.depth_mm > 3.0 * h.diameter_mm and h.diameter_mm > 0:
+            # G83: peck depth Q ≈ 1×D; each peck retracts fully and re-approaches
+            # AT RAPID (air moves), plus a stop/reverse accel allowance per peck.
+            # Handbook depth derating: feed −25% for the portion beyond 3×D.
+            peck_depth = h.diameter_mm
+            pecks = max(1, math.ceil(travel / peck_depth))
+            shallow_part = 3.0 * h.diameter_mm
+            in_time = shallow_part / drill_feed + (travel - shallow_part) / (0.75 * drill_feed)
+            air = 2.0 * peck_depth * pecks * (pecks + 1) / 2.0 / rapid
+            peck_overhead = air + pecks * (0.4 / 60.0)          # accel/decel + chip break
+        else:
+            # single plunge: no mid-cycle repositioning, just the final retract at rapid
+            in_time = travel / drill_feed
+            peck_overhead = travel / rapid
+        per = approach_min + in_time + peck_overhead    # position+spot, cut, pecks
         drill_min += per * h.count
         total_depth += h.depth_mm * h.count
         if h.threaded:
-            # tap in and out at the tapping feed.
-            tap_min += 2.0 * (h.depth_mm / tap_feed) * h.count
+            # Rigid tapping: feed is geometry-locked to pitch×RPM (not a free
+            # parameter) — only the tapping SPEED varies by material.
+            pitch = _tap_pitch(h.diameter_mm)
+            rpm = cut.get("vc_tap", 10.0) * 1000.0 / (math.pi * max(h.diameter_mm, 0.5))
+            tap_feed = max(rpm * pitch, 1e-6)
+            tap_min += (approach_min + 2.0 * (h.depth_mm / tap_feed)) * h.count
     detail = {
         "op": "drilling", "holes": feat.total_holes, "threaded": feat.threaded_holes,
         "total_depth_mm": round(total_depth, 1),
@@ -454,9 +480,14 @@ def plan_toolpath(
     except Exception:
         finish_min = base.times.finishing_min
     try:
-        drill_min, tap_min, d = _simulate_drilling(feat, cut); ops.append(d)
+        drill_min, tap_min, d = _simulate_drilling(feat, cut, tools); ops.append(d)
+        # Hard materials (machinability ≥2.5) are quoted as THREAD MILLING in
+        # the analytic backend; apply the same factor here so the two backends
+        # agree on what a Ti/SS thread costs.
+        if tap_min and material.machinability >= 2.5:
+            tap_min *= shop.capp.get("thread_mill_factor", 1.6)
     except Exception:
-        # a zero feed override (vc_drill/tap_feed=0) must not abort the whole plan
+        # a zero feed override (vc_drill/vc_tap=0) must not abort the whole plan
         drill_min, tap_min = base.times.drilling_min, base.times.tapping_min
 
     # Apply the same risk multipliers the analytic backend uses, for consistency.

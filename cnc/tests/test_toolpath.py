@@ -61,18 +61,26 @@ def test_threaded_holes_add_tapping_toolpath():
 
 
 def test_deep_peck_drilling_costs_more_per_mm_than_shallow():
-    # peck retract/re-plunge overhead must grow with peck count: a deep hole
-    # (many pecks) costs disproportionately more drilling time per mm of depth
-    # than a shallow one of the same diameter (regression for the peck-cancel bug).
-    cut, _tools = tp._derive(tp._load_cutting(), "AL6061")
-    shallow, _, _ = tp._simulate_drilling(
-        analyze(metrics_from_stl_bytes(cube_stl(50.0)),
-                holes=[Hole(diameter_mm=6.0, depth_mm=10.0, count=1)]), cut)
-    deep, _, _ = tp._simulate_drilling(
-        analyze(metrics_from_stl_bytes(cube_stl(50.0)),
-                holes=[Hole(diameter_mm=6.0, depth_mm=80.0, count=1)]), cut)
-    # 8× the depth but far more than 8× the time, because pecks pile up
-    assert deep > shallow * 8.0
+    # G83 physics: beyond 3×D the feed is derated and every peck adds rapid
+    # air-moves + a stop/reverse beat — so the VARIABLE time per mm (excluding
+    # the fixed per-hole approach) must rise with depth. Total per-hole time
+    # is dominated by the 4s approach for shallow holes, which is also real.
+    cut, tools = tp._derive(tp._load_cutting(), "AL6061")
+    approach = tools["hole_approach_s"] / 60.0
+    m = metrics_from_stl_bytes(cube_stl(50.0))
+
+    def var_per_mm(depth):
+        t, _, _ = tp._simulate_drilling(
+            analyze(m, holes=[Hole(diameter_mm=6.0, depth_mm=depth, count=1)]), cut, tools)
+        return (t - approach) / depth
+
+    assert var_per_mm(12.0) < var_per_mm(30.0) < var_per_mm(60.0)
+    # and tapping feed is geometry-locked: an M6 tap at vc_tap=20 → ~1061 RPM
+    # × 1.0mm pitch → in+out of a 12mm thread ≈ 1.4s of cutting
+    _, tap, _ = tp._simulate_drilling(
+        analyze(m, holes=[Hole(diameter_mm=6.0, depth_mm=12.0, count=1, threaded=True)]),
+        cut, tools)
+    assert abs((tap - approach) * 60 - 1.36) < 0.15
 
 
 def test_make_plan_auto_uses_toolpath_with_mesh():
